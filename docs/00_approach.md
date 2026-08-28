@@ -22,6 +22,16 @@
 `torch_distributed` を使う設計はそのまま多ノードへ拡張できます）、Phase 6 の EFA 検証は
 スコープ外とします。
 
+### 参照ワークロード
+
+既存の MosaicML Composer 版 SFT スクリプト（Qwen3-1.7B の judge モデルを rsLoRA + FSDP で
+学習するもの）を移行元とします。ベースモデル・学習データはいずれも S3 上にあります。
+移行にあたっての対応関係と機能ギャップは
+**[01_composer_to_automodel.md](01_composer_to_automodel.md)** に詳述しています。
+
+なお AutoModel 側に **rsLoRA / `enable_thinking=False` / EarlyStopper が無い**ため、
+そのままでは既存と等価になりません。回避策はいずれも同ドキュメントに記載しています。
+
 ---
 
 ## 1. 事前調査で確定した事実

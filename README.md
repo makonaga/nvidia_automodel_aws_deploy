@@ -11,6 +11,7 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 ## ドキュメント
 
 - [docs/00_approach.md](docs/00_approach.md) — 構築アプローチの検討結果（調査結果・設計・手順・リスク）
+- [docs/01_composer_to_automodel.md](docs/01_composer_to_automodel.md) — 既存 MosaicML Composer 版 SFT からの移行設計（設定マッピング・機能ギャップと対策）
 
 ## ステータス
 
