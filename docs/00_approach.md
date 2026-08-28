@@ -8,6 +8,20 @@
 
 本ドキュメントは実装前の**構築アプローチ（手順）の検討結果**です。
 
+## 0. 確定スコープ
+
+ヒアリングの結果、以下を前提として設計を確定しました。
+
+| 項目 | 決定 | 設計への影響 |
+|---|---|---|
+| 学習規模 | **7B〜13B 級 / 単一ノード多 GPU**（`ml.p4d.24xlarge` = 8×A100 等） | **EFA / aws-ofi-nccl 対応が不要**になり、コンテナが大幅に単純化される |
+| 学習の種類 | **LoRA / PEFT** | オプティマイザ状態と保存対象が小さく、VRAM・チェックポイント容量ともに余裕が出る |
+| データ経路 | **S3 チャネル経由** | `dataset.path_or_dataset` を `SM_CHANNEL_TRAIN` に写像する。ネットワーク分離も選択可能 |
+
+この結果、**当面マルチノードは対象外**です。将来的な拡張余地は残しますが（`distribution` に
+`torch_distributed` を使う設計はそのまま多ノードへ拡張できます）、Phase 6 の EFA 検証は
+スコープ外とします。
+
 ---
 
 ## 1. 事前調査で確定した事実
@@ -270,8 +284,8 @@ estimator = PyTorch(
     instance_count=1,
     distribution={"torch_distributed": {"enabled": True}},
     hyperparameters={
-        "config": "llama3_2_1b_squad_sm.yaml",
-        "set": "step_scheduler.num_epochs=1,optimizer.lr=1e-5",
+        "config": "llama3_2_1b_squad_peft_sm.yaml",
+        "set": "step_scheduler.num_epochs=1,optimizer.lr=1e-4,peft.dim=16",
     },
     environment={"HF_TOKEN": ..., "HF_HOME": "/tmp/hf"},
     checkpoint_s3_uri=f"s3://{bucket}/automodel/ckpt/",
@@ -333,22 +347,22 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - `instance_count=1` で実行 → CloudWatch にログ、S3 に成果物が出ることを確認
 - **完了条件**: `model.tar.gz` に consolidated な safetensors が入っている
 
-### Phase 6: スケールアウトと運用性の確認
-1. 1 GPU → 1 ノード多 GPU（`ml.g5.12xlarge` = 4 GPU）
-2. マルチノード（`instance_count=2` 以上、EFA 対応インスタンス）
-   - ここで **aws-ofi-nccl の追加**が必要になる（5.4 参照）
-   - `NCCL_DEBUG=INFO` で EFA provider が選択されているかログ確認
-3. チェックポイントからの再開（`checkpoint_s3_uri` を再利用して 2 回目のジョブを実行）
-4. Spot 利用（`use_spot_instances=True`, `max_wait`）での中断・再開
-- **完了条件**: 2 ノードでスループットが 1 ノードの 1.7 倍以上（EFA が効いている目安）
-
----
+### Phase 6: スケールと運用性の確認（単一ノード）
+1. 1 GPU → 1 ノード多 GPU（`ml.p4d.24xlarge` = 8×A100 40GB / `ml.g5.48xlarge` = 8×A10G 24GB）
+   - 13B 級の LoRA は FSDP2 でシャードすれば `ml.g5.48xlarge` でも収まる見込みだが、
+     余裕を見るなら `ml.p4d.24xlarge` を第一候補とする
+   - `distributed.tp_size` / `cp_size` は 1 のままで、まず FSDP2 のみで通す
+2. チェックポイントからの再開（`checkpoint_s3_uri` を再利用して 2 回目のジョブを実行）
+3. Spot 利用（`use_spot_instances=True`, `max_wait`）での中断・再開
+4. LoRA アダプタのみのマージ／推論確認
+- **完了条件**: 8 GPU でのスループットが 1 GPU の 6 倍以上、かつ中断したジョブが
+  チェックポイントから正しく再開できる
 
 ## 7. 想定される落とし穴と対策
 
 | # | 論点 | 内容と対策 |
 |---|---|---|
-| 1 | **EFA / aws-ofi-nccl** | NGC イメージには AWS の `aws-ofi-nccl` プラグインが入っていない。無いとマルチノードの NCCL が EFA を使えず TCP にフォールバックして著しく遅くなる。Dockerfile で EFA installer + `aws-ofi-nccl` をビルドして入れる。単一ノードなら不要なので Phase 6 まで後回し可 |
+| 1 | **EFA / aws-ofi-nccl** | （**今回はスコープ外**）NGC イメージには AWS の `aws-ofi-nccl` プラグインが入っておらず、無いとマルチノードの NCCL が EFA を使えず TCP にフォールバックして著しく遅くなる。単一ノード構成では不要。将来マルチノードへ拡張する際は Dockerfile に EFA installer + `aws-ofi-nccl` の追加が必要になる |
 | 2 | **イメージサイズ** | 数十 GB。ECR pull がジョブ起動時間に直撃する（初回 10 分超もあり得る）。`keep_alive_period_in_seconds`（ウォームプール）で反復開発時の再 pull を回避する |
 | 3 | **非 root ユーザ** | 公式イメージは `USER 65532`。SageMaker は `/opt/ml` 配下に root 所有で書き込むため、`USER root` に戻すのが無難 |
 | 4 | **ENTRYPOINT** | script mode では `train` コマンド（toolkit が提供）が実行される。ベースイメージの ENTRYPOINT がそれを妨げないか確認し、必要なら `ENTRYPOINT []` でクリアする |
@@ -361,15 +375,19 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 
 ---
 
-## 8. 未決定事項（実装着手前に確認したいこと）
+## 8. 次のアクション
 
-1. **ターゲットモデルと規模** — 1B クラスの検証で終えるのか、7B〜70B クラスの本番学習まで見据えるのか。
-   後者ならマルチノードと EFA 対応が必須になり、Phase 6 の比重が大きく変わります。
-2. **学習の種類** — フルパラメータ SFT / LoRA（PEFT） / 継続事前学習のどれを主目的にするか。
-   PEFT なら単一ノードで完結しやすく、構築難度が大きく下がります。
-3. **データの持ち方** — S3 チャネル経由か、HF Hub から直接ダウンロードか、FSx for Lustre か。
-4. **実行環境** — SageMaker Studio 上の Notebook か、手元の Notebook から実行するか
-   （`sm-docker` が使えるかどうかがコンテナビルド手順に影響します）。
+スコープが確定したため、Phase 0 と Phase 2〜5 を並行して進められます。
 
-これらが未確定でも Phase 0〜3 は進められるため、**まず 1B モデル + 単一ノードで
-エンドツーエンドを通す**ことを最初のマイルストーンとして提案します。
+1. **Phase 0（先行着手）** — `ml.p4d.24xlarge`（または `ml.g5.48xlarge`）の
+   training job クォータ引き上げ申請。承認待ちが最大のリードタイム要因になるため最優先。
+   あわせて NGC API キーと HuggingFace トークンを準備する
+2. **Phase 2** — `container/Dockerfile` の作成と ECR への push
+   （EFA 対応が不要になったため、実質 `USER root` + `pip install sagemaker-training` のみ）
+3. **Phase 3〜4** — `train.py` と PEFT 用のベース設定 YAML の実装
+4. **Phase 5** — Notebook を作成し、`ml.g5.12xlarge` あたりで小さいモデルから
+   エンドツーエンドを通す
+
+最初のマイルストーンは「**1B モデル + LoRA + 単一ノードで S3 チャネルからデータを読み、
+S3 にアダプタが出力される**」ところまでを通すこととします。ここが通れば、
+ターゲットモデルへの差し替えは設定変更で済みます。

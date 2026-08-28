@@ -14,4 +14,4 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 
 ## ステータス
 
-構築アプローチの検討フェーズ。実装は未着手。
+構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。実装は未着手。
