@@ -153,41 +153,75 @@ TransformerEngine や FlashAttention 3 は**ソースビルドに数十分〜数
 
 ## 3. コンテナ方針の比較と選定
 
-### 案 A（推奨）: NGC の AutoModel 公式イメージをベースに、SageMaker 対応を足す
+### 3.1 前提として確認した事実
+
+コンテナ方針を決めるうえで、`pyproject.toml` の依存関係を確認しました。
+
+| 区分 | パッケージ |
+|---|---|
+| **コア依存**（`pip install nemo-automodel` で入る） | `torch>=2.6.0`, `transformers==5.12.1`, `datasets`, `torchdata`, `torchao`, `megatron-fsdp`, `flashoptim`, `quack-kernels`, `mlflow`, `wandb` |
+| **`[cuda]` extra**（任意） | `transformer-engine[pytorch]`, `mamba-ssm`, `causal-conv1d`, `nv-grouped-gemm`, `tilelang` |
+| **その他 extra**（任意） | `flash-attn`（`[fa]`）, `bitsandbytes`（`[cuda_source]`）, `deep_ep`（`[moe]`） |
+
+つまり **TransformerEngine / FlashAttention / DeepEP はすべてオプション**で、
+コア依存だけなら**ソースビルドは一切発生しません**。
+また `nemo_automodel/shared/te_patches.py` の TE import は `try/except ImportError` で保護されており、
+TE が無くても学習レシピは動作します（Attention は PyTorch 標準の SDPA にフォールバック）。
+
+TE / FA3 が効くのは FP8 学習や MoE、長系列といった性能最適化の領域で、
+**今回のスコープ（7B〜13B 級の LoRA SFT、単一ノード、seq_length=1024）では必須ではありません**。
+
+### 3.2 案 A: AWS Deep Learning Container を拡張する（**採用**）
+
+```dockerfile
+FROM 763104351884.dkr.ecr.${REGION}.amazonaws.com/pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker
+RUN pip install --no-cache-dir nemo-automodel
+```
+
+利用可能な DLC（2026-09 時点、`aws/deep-learning-containers` の公開データより）:
+
+| タグ | Python | CUDA | GA | サポート終了 |
+|---|---|---|---|---|
+| `2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` | 3.13 | 13.0 | 2026-01-21 | 2027-01-21 |
+| `2.9.0-gpu-py312-cu130-ubuntu22.04-sagemaker` | 3.12 | 13.0 | 2025-10-15 | **2026-10-15（来月）** |
+
+第一候補は **2.10 (py313)**。ただし `quack-kernels` や `megatron-fsdp` に py313 wheel が無ければ
+2.9 (py312) にフォールバックします（Phase 2 で確認）。
+
+- ✅ `sagemaker-training` toolkit / EFA / `aws-ofi-nccl` / エントリポイント規約がすべて組み込み済み。
+  **SageMaker 連携部分にリスクがない**
+- ✅ 既存の `llm-development` イメージと同じ構築手順（DLC pull → ローカルで build → ECR push）。
+  **既に運用実績のあるワークフローをそのまま使える**
+- ✅ SageMaker ホストのドライバと CUDA 13.0 の整合を AWS が保証している
+- ✅ イメージが比較的小さく（十数 GB）、ローカル PC からの build / push が現実的
+- ⚠️ 上記の通り TE / FA3 は入らない。必要になった時点で `[cuda]` extra を追加するか、案 B に切り替える
+- ⚠️ `transformers==5.12.1` に固定される。既存イメージ（`tf4511` = 4.51.1）とは別イメージとして管理する
+
+### 3.3 案 B: NGC の AutoModel 公式イメージをベースにする（将来の選択肢）
 
 ```dockerfile
 FROM nvcr.io/nvidia/nemo-automodel:25.11
 USER root
-# SageMaker script mode を有効にする
 RUN /opt/venv/bin/pip install --no-cache-dir sagemaker-training
-# EFA / aws-ofi-nccl（マルチノード時に必須。5.4 参照）
-...
 ```
 
-- ✅ TE / FA3 / DeepEP / bitsandbytes がビルド済み → イメージ作成が現実的な時間で終わる
-- ✅ NVIDIA が検証した依存関係の組み合わせをそのまま使える
-- ⚠️ EFA 用の `aws-ofi-nccl` プラグインが入っていないため自前で追加が必要
-- ⚠️ イメージが巨大（数十 GB）→ ビルド環境とジョブ起動時間に影響
+- ✅ TE / FA3 / DeepEP / bitsandbytes がビルド済み。FP8 や MoE をやるならこちら
+- ❌ イメージが数十 GB。**ローカル PC からの pull → push は帯域的に厳しい**（EC2 か CodeBuild が現実的）
+- ❌ `USER 65532` の非 root ユーザ、`/opt/venv` の uv 環境、`aws-ofi-nccl` 不在など、
+  SageMaker 側の規約との摺り合わせが必要
+- ❌ NGC アカウントと API キーが別途必要
 
-### 案 B: AWS Deep Learning Container を拡張する
+### 3.4 結論
 
-```dockerfile
-FROM 763104351884.dkr.ecr.<region>.amazonaws.com/pytorch-training:<ver>-gpu-py311-cu124-ubuntu22.04-sagemaker
-RUN pip install nemo-automodel[all]
-```
+**案 A（DLC 拡張）を採用します。**
 
-- ✅ sagemaker-training toolkit / EFA / aws-ofi-nccl が最初から入っている
-- ❌ DLC の torch/CUDA バージョンと AutoModel の要求（`torch>=2.6`, cu129/cu130 系 index）が衝突しやすい
-- ❌ TransformerEngine / FlashAttention 3 をソースビルドすることになり、ビルド時間と失敗リスクが大きい
+当初は「AutoModel の依存が重いので NVIDIA ビルド済みイメージを使うべき」と判断していましたが、
+それは `[cuda]` / `[all]` extra を入れる場合の話で、コア依存だけなら成り立ちません。
+今回のスコープでは TE / FA3 が不要なため、SageMaker 連携が保証されていて既存の運用手順を
+流用できる DLC 拡張の方が、**構築リスク・所要時間の両面で明確に優位**です。
 
-### 結論
-
-**案 A を採用**します。AutoModel は依存が非常に重く、NVIDIA がビルド済みの成果物を捨てる
-コストが割に合いません。案 A で不足するのは SageMaker 連携部（toolkit と EFA）だけであり、
-そこは追加が容易です。
-
-なお、まず単一ノードで動かすだけなら EFA 対応は後回しにでき、案 A の追加作業は
-`pip install sagemaker-training` の 1 行だけで済みます。**段階的に進められる**点も案 A の利点です。
+案 B は「FP8 で高速化したい」「MoE モデルを扱いたい」となった時点で再検討します。
+`train.py` と YAML はどちらのイメージでも変わらないため、切り替えコストは Dockerfile のみです。
 
 ---
 
@@ -319,7 +353,7 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - AWS: S3 バケット、ECR リポジトリ、SageMaker 実行ロール（S3/ECR/CloudWatch 権限）
 - **サービスクォータの引き上げ申請**（`ml.g5.12xlarge` / `ml.p4d.24xlarge` などの
   training job usage）。承認に数日かかることがあるため**最初に着手**する
-- NGC アカウントと API キー（`nvcr.io` からの pull に必要）
+- （案 B に切り替える場合のみ）NGC アカウントと API キー
 - HuggingFace トークン（gated モデルを使う場合）
 - **完了条件**: 目的のインスタンスタイプのクォータが 1 以上ある
 
@@ -333,12 +367,14 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
   SageMaker より先に潰しておくのが目的
 
 ### Phase 2: SageMaker 用コンテナの作成
-- `container/Dockerfile`（案 A）を作成: `USER root` → `pip install sagemaker-training`
-- ビルド環境の選択（イメージが巨大なため重要）:
-  - SageMaker Studio から `sm-docker build`（CodeBuild 実行、ローカル docker 不要）
-  - または EBS を大きめ（200 GB 以上）にした EC2 で `docker build`
+- `container/Dockerfile`（案 A）を作成: DLC `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker`
+  をベースに `pip install nemo-automodel`
+- 既存の `llm-development` イメージと同じ手順でローカル PC から build → ECR push
+  （DLC の pull には `aws ecr get-login-password` による 763104351884 への docker login が必要）
+- py313 wheel が無い依存があれば 2.9 (py312) にフォールバック
 - ECR へ push（**Training Job と同一リージョン**であること）
-- **完了条件**: ECR のイメージを `docker run` して `automodel --help` が通る
+- **完了条件**: ECR のイメージを `docker run` して `python -c "import nemo_automodel"` と
+  `automodel --help` が通る
 
 ### Phase 3: `train.py` の実装
 - 5.1 / 5.2 の設計に沿って実装
@@ -373,9 +409,9 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 | # | 論点 | 内容と対策 |
 |---|---|---|
 | 1 | **EFA / aws-ofi-nccl** | （**今回はスコープ外**）NGC イメージには AWS の `aws-ofi-nccl` プラグインが入っておらず、無いとマルチノードの NCCL が EFA を使えず TCP にフォールバックして著しく遅くなる。単一ノード構成では不要。将来マルチノードへ拡張する際は Dockerfile に EFA installer + `aws-ofi-nccl` の追加が必要になる |
-| 2 | **イメージサイズ** | 数十 GB。ECR pull がジョブ起動時間に直撃する（初回 10 分超もあり得る）。`keep_alive_period_in_seconds`（ウォームプール）で反復開発時の再 pull を回避する |
-| 3 | **非 root ユーザ** | 公式イメージは `USER 65532`。SageMaker は `/opt/ml` 配下に root 所有で書き込むため、`USER root` に戻すのが無難 |
-| 4 | **ENTRYPOINT** | script mode では `train` コマンド（toolkit が提供）が実行される。ベースイメージの ENTRYPOINT がそれを妨げないか確認し、必要なら `ENTRYPOINT []` でクリアする |
+| 2 | **イメージサイズ** | DLC 拡張なら十数 GB。それでも ECR pull はジョブ起動時間に効くため、`keep_alive_period_in_seconds`（ウォームプール）で反復開発時の再 pull を回避する |
+| 3 | **非 root ユーザ** | （案 B のみ）NGC 公式イメージは `USER 65532`。SageMaker は `/opt/ml` 配下に root 所有で書き込むため、`USER root` に戻す必要がある。DLC は root のため該当しない |
+| 4 | **ENTRYPOINT** | （案 B のみ）script mode では `train` コマンド（toolkit が提供）が実行される。DLC は設定済み。NGC ベースの場合はベースイメージの ENTRYPOINT を確認する |
 | 5 | **`/dev/shm`** | DataLoader の worker が shm 不足で落ちることがある。`dataloader.num_workers` を控えめにするか、shm 使用量を抑える設定にする |
 | 6 | **ネットワーク分離** | `enable_network_isolation=True` だと HF Hub にアクセスできない。その場合はモデル重みとデータセットを事前に S3 へ置き、`model` チャネルとして渡す |
 | 7 | **HF_TOKEN の扱い** | Notebook にベタ書きしない。SageMaker の `environment` に渡すか、Secrets Manager から取得する。`HF_HOME` は `/tmp` 配下など書き込み可能な場所に向ける |
@@ -391,9 +427,9 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 
 1. **Phase 0（先行着手）** — `ml.p4d.24xlarge`（または `ml.g5.48xlarge`）の
    training job クォータ引き上げ申請。承認待ちが最大のリードタイム要因になるため最優先。
-   あわせて NGC API キーと HuggingFace トークンを準備する
+   あわせて HuggingFace トークンを準備する
 2. **Phase 2** — `container/Dockerfile` の作成と ECR への push
-   （EFA 対応が不要になったため、実質 `USER root` + `pip install sagemaker-training` のみ）
+   （DLC 拡張なので実質 `FROM <DLC>` + `pip install nemo-automodel` のみ。既存手順を流用）
 3. **Phase 3〜4** — `train.py` と PEFT 用のベース設定 YAML の実装
 4. **Phase 5** — Notebook を作成し、`ml.g5.12xlarge` あたりで小さいモデルから
    エンドツーエンドを通す
