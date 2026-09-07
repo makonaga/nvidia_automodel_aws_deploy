@@ -185,8 +185,8 @@ RUN pip install --no-cache-dir nemo-automodel
 | `2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` | 3.13 | 13.0 | 2026-01-21 | 2027-01-21 |
 | `2.9.0-gpu-py312-cu130-ubuntu22.04-sagemaker` | 3.12 | 13.0 | 2025-10-15 | **2026-10-15（来月）** |
 
-第一候補は **2.10 (py313)**。ただし `quack-kernels` や `megatron-fsdp` に py313 wheel が無ければ
-2.9 (py312) にフォールバックします（Phase 2 で確認）。
+**2.10 (py313) を採用**します。詳細な比較と wheel 互換性の検証結果は
+[02_dlc_selection.md](02_dlc_selection.md) を参照してください。
 
 - ✅ `sagemaker-training` toolkit / EFA / `aws-ofi-nccl` / エントリポイント規約がすべて組み込み済み。
   **SageMaker 連携部分にリスクがない**
