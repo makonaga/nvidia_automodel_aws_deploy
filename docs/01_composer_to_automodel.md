@@ -226,13 +226,18 @@ Qwen3 のテンプレートは `enable_thinking` の既定値が `True` のた�
 対策は 2 段構えを推奨します。
 
 **Step 1（まずはこれで通す）** — 標準の `ColumnMappedTextInstructionDataset` を使う。
-instruction / input / output 形式にそのまま対応できます。
+
+注意点が 1 つあります。このクラスは `use_hf_chat_template: true` のとき、
+`context` を **system ロール**、`question` を user ロールに入れます（`column_mapped_text_instruction_dataset.py:353`）。
+既存 Composer 版は `instruction + "\n\n" + input` を **user ロール**に結合していたので、
+`input` を `context` に写像すると挙動が変わります。
+そのため、データ準備時に結合済みの `prompt` フィールドを作り、それを `question` に写像します。
 
 ```yaml
 dataset:
   _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
-  path_or_dataset_id: /opt/ml/input/data/train/train.json
-  column_mapping: {context: input, question: instruction, answer: output}
+  path_or_dataset_id: /opt/ml/input/data/train/train.jsonl
+  column_mapping: {question: prompt, answer: output}    # prompt = instruction + "\n\n" + input
   use_hf_chat_template: true
   answer_only_loss_mask: true
   seq_length: 1024
@@ -280,6 +285,7 @@ SFT では一般に後者が望ましい挙動ですが、**既存モデルと�
 | 項目 | 対策 |
 |---|---|
 | `output` フィールドが list のことがある | 既存は学習時に `json.dumps` で文字列化していた。**S3 へのアップロード時に正規化しておく**のが最も安全（notebook のデータ準備セルで実施） |
+| `instruction` と `input` の結合 | 既存は学習時に `instruction + "\n\n" + input` を user メッセージにしていた。AutoModel の dataset は `context` を system に入れるため、**データ準備時に結合済みの `prompt` フィールドを作って `question` に写像する**（5.2 参照） |
 | `train_test_split(test_size=0.2)` を学習時に実行 | AutoModel は train / validation を別データセットとして受ける。**事前に分割して 2 つの S3 オブジェクトにする** |
 | `<think>` / `</think>` の特殊トークン追加 | Qwen3 のトークナイザには既に含まれるため、既存コードの `if` は実質 no-op のはず。自前 dataset を使う場合のみ要確認 |
 | `device_train_microbatch_size='auto'` | 相当機能なし。`local_batch_size` を 4 あたりから始めて OOM を見ながら調整 |
@@ -334,8 +340,8 @@ loss_fn:
 
 dataset:
   _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
-  path_or_dataset_id: /opt/ml/input/data/train/train.json    # train.py が上書き
-  column_mapping: {context: input, question: instruction, answer: output}
+  path_or_dataset_id: /opt/ml/input/data/train/train.jsonl   # train.py が上書き
+  column_mapping: {question: prompt, answer: output}         # prompt = instruction + "\n\n" + input
   use_hf_chat_template: true
   answer_only_loss_mask: true   # 既存と厳密比較するなら false（5.3 参照）
   seq_length: 1024
@@ -343,8 +349,8 @@ dataset:
 
 validation_dataset:
   _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
-  path_or_dataset_id: /opt/ml/input/data/validation/val.json # train.py が上書き
-  column_mapping: {context: input, question: instruction, answer: output}
+  path_or_dataset_id: /opt/ml/input/data/validation/val.jsonl # train.py が上書き
+  column_mapping: {question: prompt, answer: output}
   use_hf_chat_template: true
   answer_only_loss_mask: true
   seq_length: 1024

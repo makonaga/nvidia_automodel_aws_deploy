@@ -14,6 +14,10 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 - [docs/01_composer_to_automodel.md](docs/01_composer_to_automodel.md) — 既存 MosaicML Composer 版 SFT からの移行設計（設定マッピング・機能ギャップと対策）
 - [docs/02_dlc_selection.md](docs/02_dlc_selection.md) — ベース DLC イメージの選定（候補比較・wheel 互換性・Dockerfile 案）
 
+## 学習データ
+
+- [data/README.md](data/README.md) — 料理の基礎知識 SFT サンプル（306 件、train/val 分割済み）
+
 ## ステータス
 
 構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。実装は未着手。
