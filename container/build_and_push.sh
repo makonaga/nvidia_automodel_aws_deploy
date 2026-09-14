@@ -44,7 +44,9 @@ aws ecr get-login-password --region "${REGION}" \
   | docker login --username AWS --password-stdin "${DLC_ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
 
 echo "== 2/4 docker build (linux/amd64) =="
+# --progress=plain: 成功した RUN ステップの出力 (バージョン一覧や pip check の結果) も表示する
 docker build \
+  --progress=plain \
   --platform linux/amd64 \
   --build-arg REGION="${REGION}" \
   --build-arg DLC_TAG="${DLC_TAG}" \

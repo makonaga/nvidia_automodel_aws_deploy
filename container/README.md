@@ -67,6 +67,19 @@ REGION=$REGION ./build_and_push.sh --no-push
 - `pip check` で依存衝突がないこと
 
 ログに各パッケージのバージョンが出力されるので、`docs/02_dlc_selection.md` の表と照合してください。
+成功時の pip check の出力は次の形です（`[info]` と `[warn]` は想定内、`[error]` が出るとビルドが止まります）。
+
+```
+[info] ベース DLC 由来の既存衝突 (無視):
+    aiobotocore 3.9.1 has requirement botocore<1.43.76,>=1.43.66, but you have botocore 1.43.89.
+    skops 0.14.0 requires prettytable, which is not installed.
+[warn] この層で生じたが許容済みの衝突 (学習経路では未使用):
+    s3fs 2026.7.0 has requirement fsspec<2026.7.1,>=2026.7.0, but you have fsspec 2025.9.0.
+[ok] pip check: 新規の依存衝突なし
+```
+
+ステップがキャッシュ済み（`CACHED` 表示）の場合は出力が再表示されません。その場合は
+`docker run --rm --entrypoint "" nemo-automodel-sagemaker:<TAG> pip check` でイメージ内から直接確認できます。
 
 ### Step 5: ローカルで動作確認
 
