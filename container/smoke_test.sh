@@ -37,8 +37,18 @@ echo "== [3] SageMaker toolkit のエントリポイント =="
 run python -c "import sagemaker_training, sagemaker_pytorch_container; print('sagemaker-training OK')"
 run bash -lc 'echo "SAGEMAKER_TRAINING_MODULE=$SAGEMAKER_TRAINING_MODULE"; which train'
 
-echo "== [4] pip check =="
-run pip check
+echo "== [4] pip check (想定内: s3fs/fsspec, aiobotocore/botocore の 2 件) =="
+# pip check は衝突があると終了コード 1 を返すので set -e で止めない。
+# 想定内の 2 件以外が出た場合だけ失敗にする。
+pipcheck_out="$(run pip check 2>&1 || true)"
+echo "${pipcheck_out}"
+unexpected="$(echo "${pipcheck_out}" | grep -v -E '^(s3fs .* fsspec|aiobotocore .* botocore|No broken requirements)' || true)"
+if [[ -n "${unexpected}" ]]; then
+  echo "[error] 想定外の依存衝突:" >&2
+  echo "${unexpected}" >&2
+  exit 1
+fi
+echo "[ok] 想定外の衝突なし"
 
 if [[ ${#GPU_ARGS[@]} -gt 0 ]]; then
   echo "== [5] GPU: flash-attn / TransformerEngine の import =="
