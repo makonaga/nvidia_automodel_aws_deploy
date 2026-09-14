@@ -171,6 +171,15 @@ RUN pip install --no-cache-dir -c /tmp/constraints.txt nemo-automodel==0.6.0
 
 ---
 
+### 5.5 Qwen3.5 には `flash-linear-attention` が必要
+
+Qwen3.5（および Qwen3-Next）は Gated DeltaNet（線形 attention）とフル attention のハイブリッド構造で、
+線形 attention 部分は `flash-linear-attention`（fla）の Triton カーネルを使います。
+transformers の実装は fla が無いと torch のフォールバックに切り替わり動作はしますが大幅に遅くなります。
+AutoModel の lock は `flash-linear-attention==0.4.2` / `fla-core==0.4.2`（pure Python）を含むため、
+イメージに同梱します。同じく lock にある `causal-conv1d==1.6.0` は sdist のみでコンパイルが必要なため、
+既定では入れず `--build-arg INSTALL_CAUSAL_CONV1D=1` で opt-in にしています（無い場合は `F.conv1d` にフォールバック）。
+
 ## 6. Dockerfile（案）
 
 > 実装は `container/` ディレクトリにあります。手順は `container/README.md` を参照。

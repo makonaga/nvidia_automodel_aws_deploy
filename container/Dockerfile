@@ -30,7 +30,22 @@ RUN pip check > /tmp/pipcheck_base.txt 2>&1 || true
 # 削除することになるため、DLC のパッケージはそのまま残し、この衝突だけを
 # 下の pip check で「許容済み」として扱う。
 COPY constraints.txt /tmp/constraints.txt
-RUN pip install --no-cache-dir -c /tmp/constraints.txt "nemo-automodel==${AUTOMODEL_VERSION}" \
+RUN pip install --no-cache-dir -c /tmp/constraints.txt \
+      "nemo-automodel==${AUTOMODEL_VERSION}" \
+      "flash-linear-attention" \
+ && rm -rf /root/.cache/pip
+
+# --- (任意) causal-conv1d: Qwen3.5 の GDN 層の短い畳み込み用 CUDA カーネル ----------
+# PyPI は sdist のみで nvcc によるコンパイルが必要 (数分〜十数分)。無くても torch の
+# F.conv1d にフォールバックするため既定では入れない。必要なら
+#   --build-arg INSTALL_CAUSAL_CONV1D=1 --build-arg TORCH_CUDA_ARCH_LIST="8.0;9.0"
+# のように対象 GPU の arch を絞って有効化する。
+ARG INSTALL_CAUSAL_CONV1D=0
+ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+RUN if [ "${INSTALL_CAUSAL_CONV1D}" = "1" ]; then \
+      TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}" MAX_JOBS=4 \
+      pip install --no-cache-dir --no-build-isolation -c /tmp/constraints.txt "causal-conv1d==1.6.0"; \
+    fi \
  && rm -rf /root/.cache/pip /tmp/constraints.txt
 
 # --- ビルド時検証 1: torch が差し替わっていないこと、import が通ること -------
@@ -38,14 +53,16 @@ RUN python - <<'PY'
 import importlib, sys
 import torch
 assert torch.__version__.startswith("2.10.0"), f"torch が差し替わっています: {torch.__version__}"
-import nemo_automodel, transformers, datasets, torchao
+import nemo_automodel, transformers, datasets, torchao, fla
 from nemo_automodel.cli.app import main  # CLI エントリポイント
+from transformers.models.qwen3_5 import modeling_qwen3_5  # Qwen3.5 アーキテクチャ
 print("torch          :", torch.__version__, "| cuda", torch.version.cuda)
 print("nemo_automodel :", nemo_automodel.__version__)
 print("transformers   :", transformers.__version__)
 print("datasets       :", datasets.__version__)
 print("torchao        :", torchao.__version__)
-for mod in ("flash_attn", "transformer_engine", "sagemaker_training", "sagemaker_pytorch_container"):
+print("fla            :", fla.__version__)
+for mod in ("flash_attn", "transformer_engine", "causal_conv1d", "sagemaker_training", "sagemaker_pytorch_container"):
     try:
         m = importlib.import_module(mod)
         print(f"{mod:28s}: OK", getattr(m, "__version__", ""))

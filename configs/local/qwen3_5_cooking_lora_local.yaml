@@ -1,0 +1,96 @@
+# =============================================================================
+# ローカル GPU での学習テスト用 (push 前のイメージ検証)
+#   torchrun --nproc_per_node=1 -m nemo_automodel.cli.app configs/local/qwen3_5_cooking_lora_local.yaml
+# 目的: Qwen3.5 のロード、cooking データの読み込み、LoRA、数ステップの学習、
+#       チェックポイント保存までがイメージ内で通ることを確認する。精度は見ない。
+# =============================================================================
+recipe: TrainFinetuneRecipeForNextTokenPrediction
+
+step_scheduler:
+  global_batch_size: 8
+  local_batch_size: 2
+  num_epochs: 1
+  max_steps: 20            # 数ステップで打ち切る
+  val_every_steps: 10
+  ckpt_every_steps: 10
+  save_checkpoint_every_epoch: false
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 5
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 17
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: Qwen/Qwen3.5-0.8B   # 実行スクリプトの MODEL_ID で上書き可
+  torch_dtype: bf16
+
+peft:
+  _target_: nemo_automodel.components._peft.lora.PeftConfig
+  target_modules: '*_proj'
+  dim: 8
+  alpha: 32
+  dropout: 0.05
+  use_triton: true
+
+distributed:
+  strategy: fsdp2
+  dp_size: none
+  tp_size: 1
+  cp_size: 1
+  sequence_parallel: false
+
+clip_grad_norm:
+  max_norm: 1.0
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
+  path_or_dataset_id: /workspace/data/cooking_basics/train.jsonl
+  column_mapping: {question: prompt, answer: output}
+  use_hf_chat_template: true
+  answer_only_loss_mask: true
+  seq_length: 512
+  truncation: true
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: true
+  num_workers: 2
+
+validation_dataset:
+  _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
+  path_or_dataset_id: /workspace/data/cooking_basics/val.jsonl
+  column_mapping: {question: prompt, answer: output}
+  use_hf_chat_template: true
+  answer_only_loss_mask: true
+  seq_length: 512
+  truncation: true
+  limit_dataset_samples: 16
+
+validation_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1.0e-4
+  betas: [0.9, 0.999]
+  eps: 1.0e-6
+  weight_decay: 0.01
+
+checkpoint:
+  enabled: true
+  checkpoint_dir: /workspace/out/local_test/checkpoints
+  model_save_format: safetensors
+  save_consolidated: true

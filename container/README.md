@@ -6,7 +6,8 @@ NeMo AutoModel 0.6.0 を載せたイメージを作り、自アカウントの E
 
 | ファイル | 役割 |
 |---|---|
-| `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0`（constraints で pin）+ ビルド時検証 |
+| `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention`（constraints で pin）+ ビルド時検証。`causal-conv1d` は `--build-arg INSTALL_CAUSAL_CONV1D=1` で opt-in |
+| `local_train_test.sh` | ローカル GPU でイメージ内から 20 ステップの LoRA 学習を回す（Step 5.5） |
 | `constraints.txt` | AutoModel v0.6.0 の `uv.lock` に合わせた pin。torch の差し替え防止 |
 | `build_and_push.sh` | DLC ログイン → build → ECR リポジトリ作成 → push を一括実行 |
 | `smoke_test.sh` | ビルド済みイメージの import / CLI / toolkit / `pip check` を確認 |
@@ -90,6 +91,22 @@ REGION=$REGION ./build_and_push.sh --no-push
 確認内容: import とバージョン、`automodel --help`、SageMaker toolkit のエントリポイント、`pip check`。
 GPU があるマシンでは flash-attn と TransformerEngine の import も確認します。
 GPU のない PC では `cuda available: False` と出ますが、それ自体は問題ありません。
+
+### Step 5.5: ローカル GPU で学習テスト（GPU がある場合のみ）
+
+イメージ内から Qwen3.5-0.8B の LoRA 学習を 20 ステップだけ回し、
+SageMaker と同じ経路（torchrun → `nemo_automodel.cli.app` → in-process 実行）で
+モデルのロード、cooking データの読み込み、LoRA、チェックポイント保存までを検証します。
+
+```bash
+./local_train_test.sh                              # 既定: Qwen/Qwen3.5-0.8B
+MODEL_ID=Qwen/Qwen3-0.6B ./local_train_test.sh      # 別モデルで試す場合
+```
+
+初回は HF Hub からモデル（約 1.6 GB）をダウンロードします（キャッシュは `<repo>/.hf_cache`）。
+最後に `step N | epoch 0 | loss ...` の行と `out/local_test/checkpoints/` の中身が表示されれば成功です。
+Qwen3.5 の線形 attention 層は `flash-linear-attention` の Triton カーネルを使うため、
+初回ステップで Triton のコンパイルに数十秒かかります。
 
 ### Step 6: ECR へ push
 
