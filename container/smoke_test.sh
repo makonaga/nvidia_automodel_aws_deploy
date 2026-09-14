@@ -55,6 +55,11 @@ if [[ ${#GPU_ARGS[@]} -gt 0 ]]; then
   run python -c '
 import flash_attn; print("flash_attn", flash_attn.__version__)
 import transformer_engine.pytorch as te; print("transformer_engine OK")
+import fla; print("fla", fla.__version__)
+try:
+    import causal_conv1d; print("causal_conv1d", causal_conv1d.__version__)
+except ImportError as e:
+    print("causal_conv1d: 未導入 (packed + MTP を使うなら INSTALL_CAUSAL_CONV1D=1 で再ビルド)", e)
 '
 else
   echo "== [5] GPU なしのためスキップ (flash-attn / TE の確認は GPU 環境で) =="

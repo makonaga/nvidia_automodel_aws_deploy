@@ -35,16 +35,20 @@ RUN pip install --no-cache-dir -c /tmp/constraints.txt \
       "flash-linear-attention" \
  && rm -rf /root/.cache/pip
 
-# --- (任意) causal-conv1d: Qwen3.5 の GDN 層の短い畳み込み用 CUDA カーネル ----------
-# PyPI は sdist のみで nvcc によるコンパイルが必要 (数分〜十数分)。無くても torch の
-# F.conv1d にフォールバックするため既定では入れない。必要なら
-#   --build-arg INSTALL_CAUSAL_CONV1D=1 --build-arg TORCH_CUDA_ARCH_LIST="8.0;9.0"
-# のように対象 GPU の arch を絞って有効化する。
-ARG INSTALL_CAUSAL_CONV1D=0
+# --- causal-conv1d: Qwen3.5 の GDN 層の畳み込み用 CUDA カーネル (既定で導入) --------
+# packed sequence で学習する場合、これが無いと GDN の畳み込みが文書境界を無視する
+# (transformers/AutoModel は seq_idx 付きの causal_conv1d_fn が無いと F.conv1d に
+# フォールバックし、pack 内の別文書の末尾 3 トークンが混入する)。MTP を有効にした
+# 学習は packed が必須のため、既定で導入する。PyPI は sdist のみで、torch 2.10 / CUDA 13 /
+# py3.13 向けのビルド済み wheel が GitHub Releases に無いため nvcc でコンパイルする
+# (10 分前後)。対象 GPU: A100 (8.0) / A10G・RTX 30 系 (8.6) / L4・RTX 40 系 (8.9) / H100 (9.0)。
+# --build-arg INSTALL_CAUSAL_CONV1D=0 で無効化できる (padded バッチ + MTP 無効の構成向け)。
+ARG INSTALL_CAUSAL_CONV1D=1
 ARG TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 RUN if [ "${INSTALL_CAUSAL_CONV1D}" = "1" ]; then \
-      TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}" MAX_JOBS=4 \
-      pip install --no-cache-dir --no-build-isolation -c /tmp/constraints.txt "causal-conv1d==1.6.0"; \
+      CAUSAL_CONV1D_FORCE_BUILD=TRUE TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}" MAX_JOBS=4 \
+      pip install --no-cache-dir --no-build-isolation -c /tmp/constraints.txt "causal-conv1d==1.6.0" \
+      && python -c "import causal_conv1d, causal_conv1d_cuda; print('causal_conv1d', causal_conv1d.__version__)"; \
     fi \
  && rm -rf /root/.cache/pip /tmp/constraints.txt
 

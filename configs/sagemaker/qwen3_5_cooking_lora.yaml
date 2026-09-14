@@ -9,8 +9,8 @@
 recipe: TrainFinetuneRecipeForNextTokenPrediction
 
 step_scheduler:
-  global_batch_size: 32
-  local_batch_size: 4            # OOM なら 2 に。global は train.py が world_size で整合させる
+  global_batch_size: 16           # packed では 1 サンプル = 1 pack (2048 トークン)
+  local_batch_size: 2            # pack 単位。OOM なら 1 に。global は train.py が world_size で整合させる
   num_epochs: 3
   val_every_steps: 20
   ckpt_every_steps: 50
@@ -29,8 +29,16 @@ model:
   _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
   pretrained_model_name_or_path: Qwen/Qwen3.5-0.8B   # model チャネル or --model_id で上書き
   torch_dtype: bf16
-  # Qwen3.5 の MTP ヘッドは SFT に不要で、パディング付きバッチで形状エラーになるため無効化
-  num_nextn_predict_layers: 0
+  # AutoModel の BackendConfig は TE が使える環境では attn/linear の既定が "te" になる。
+  # packed (neat) の mask 経路を確実にし、後段の LoRA マージを単純にするため sdpa / torch を明示する。
+  backend:
+    _target_: nemo_automodel.components.models.common.BackendConfig
+    attn: sdpa
+    linear: torch
+    rms_norm: torch_fp32
+  # MTP ヘッド (num_nextn_predict_layers) は HF config の値のまま有効にする。
+  # vLLM / SGLang の MTP 投機的デコーディングで使うため、本体と一緒に学習して整合を保つ。
+  # MTP は padded バッチでは形状エラーになるため、下の packed_sequence (neat) が必須。
   # A100/A10G 以上なら flash_attention_2 の方が速い (DLC 同梱の flash-attn 2.8.3)。
   # まずは既定の sdpa で通し、安定したら --model.attn_implementation flash_attention_2 を試す。
 
@@ -65,7 +73,12 @@ dataset:
   truncation: true
 
 packed_sequence:
-  packed_sequence_size: 0
+  # neat 方式: 複数サンプルを 1 本の系列に詰め、文書 index 付き mask で境界を表す。
+  # sdpa では collater が 4D block-causal mask に変換し、index mask は _packed_seq_ids として
+  # モデルに渡る (Qwen3.5 の GDN 層と MTP ヘッドはこれで境界を扱う)。要 causal-conv1d。
+  packed_sequence_size: 2048
+  packing_strategy: neat
+  drop_long_samples: true       # pack_size より長いサンプルは捨てる (seq_length で truncation 済みなら発生しない)
 
 dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader

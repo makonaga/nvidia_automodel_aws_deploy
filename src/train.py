@@ -263,6 +263,10 @@ def apply_derived_settings(cfg: dict, args: argparse.Namespace) -> None:
         paths = train_path if isinstance(train_path, list) else [train_path]
         try:
             n = sum(count_samples(p) for p in paths)
+            pack_size = int(get_dotted(cfg, "packed_sequence.packed_sequence_size", 0) or 0)
+            if pack_size > 0:
+                # packed では 1 サンプル = 1 pack。トークン数を一部サンプルから見積もって pack 数に換算する
+                n = estimate_num_packs(cfg, paths, n, pack_size)
             steps_per_epoch = max(1, math.ceil(n / gbs))
             warmup = int(round(steps_per_epoch * args.warmup_epochs))
             cfg.setdefault("lr_scheduler", {})
@@ -270,6 +274,30 @@ def apply_derived_settings(cfg: dict, args: argparse.Namespace) -> None:
             log.info("lr_warmup_steps ← %d (samples=%d, steps/epoch=%d, warmup_epochs=%g)", warmup, n, steps_per_epoch, args.warmup_epochs)
         except Exception as e:  # HF Hub の dataset id など数えられない場合
             log.warning("warmup_epochs を steps に変換できませんでした: %s", e)
+
+
+def estimate_num_packs(cfg: dict, paths: list[str], n_samples: int, pack_size: int, probe: int = 200) -> int:
+    """packed sequence の pack 数を見積もる (先頭 probe 件をトークナイズして平均長を外挿)。"""
+    from transformers import AutoTokenizer
+
+    tok = AutoTokenizer.from_pretrained(get_dotted(cfg, "model.pretrained_model_name_or_path"), trust_remote_code=True)
+    mapping = get_dotted(cfg, "dataset.column_mapping", {}) or {}
+    q_col, a_col = mapping.get("question", "prompt"), mapping.get("answer", "output")
+    seq_len = int(get_dotted(cfg, "dataset.seq_length", 0) or 0)
+    lens: list[int] = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            rows = [json.loads(l) for l in f if l.strip()] if path.endswith(".jsonl") else json.load(f)
+        for r in rows[: max(1, probe - len(lens))]:
+            msgs = [{"role": "user", "content": r[q_col]}, {"role": "assistant", "content": r[a_col]}]
+            L = len(tok.apply_chat_template(msgs, tokenize=True, add_generation_prompt=False))
+            lens.append(min(L, seq_len) if seq_len else L)
+        if len(lens) >= probe:
+            break
+    avg = sum(lens) / max(1, len(lens))
+    packs = math.ceil(n_samples * avg / pack_size * 1.1)  # 1.1 = bin packing の隙間ぶん
+    log.info("packing 見積もり: samples=%d, avg_tokens=%.0f, pack_size=%d → packs≈%d", n_samples, avg, pack_size, packs)
+    return max(1, packs)
 
 
 # ---------------------------------------------------------------------------

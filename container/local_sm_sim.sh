@@ -55,7 +55,7 @@ docker run --rm --gpus all --platform linux/amd64 \
   "${IMAGE}" \
   torchrun --nproc_per_node="${NPROC}" /opt/ml/code/train.py \
     --config "${CONFIG}" \
-    --set "step_scheduler.max_steps=10,step_scheduler.val_every_steps=5,step_scheduler.ckpt_every_steps=5,step_scheduler.global_batch_size=8,step_scheduler.local_batch_size=2,dataset.seq_length=512,validation_dataset.seq_length=512,validation_dataset.limit_dataset_samples=16" \
+    --set "step_scheduler.max_steps=10,step_scheduler.val_every_steps=5,step_scheduler.ckpt_every_steps=5,step_scheduler.global_batch_size=4,step_scheduler.local_batch_size=1,dataset.seq_length=512,validation_dataset.seq_length=512,validation_dataset.limit_dataset_samples=16,packed_sequence.packed_sequence_size=1024" \
     --warmup_epochs 0.5 \
     "$@" \
   2>&1 | tee "${REPO_ROOT}/out/sm_sim/train.log"

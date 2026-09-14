@@ -61,7 +61,7 @@ AutoModel の開発環境は 3.12 ですが、DLC 2.10 の 3.13 で import・学
 - `transformers 5.12.1` は `qwen3_5` アーキテクチャを含む
 - v0.6.0 の `examples/llm_finetune/` に Qwen3.5 用の YAML は無く、`qwen/qwen3_0p6b_hellaswag_peft.yaml` を雛形にした
 
-### 2.2 MTP ヘッドが自動で有効化され、形状エラーになった
+### 2.2 MTP ヘッドが自動で有効化され、padded バッチで形状エラーになった
 
 Qwen3.5 のチェックポイントは MTP（multi-token prediction）ヘッドの重みを同梱しており、AutoModel は
 HF config の `num_nextn_predict_layers` を見て学習時に MTP 損失を自動で有効化します。この経路で、
@@ -72,11 +72,38 @@ RuntimeError: The expanded size of the tensor (129) must match the existing size
 Target sizes: [2, 8, 129, 129]. Tensor sizes: [2, 129]
 ```
 
-で失敗しました（traceback に `self.mtp(` を含む）。MTP は投機的デコーディング用の補助ヘッドで SFT には
-不要なため、`model.num_nextn_predict_layers: 0` で無効化しました。無効化により学習対象パラメータは
-3.86M → 3.64M、総パラメータは 877M → 857M に減ります（MTP ヘッド分）。
+で失敗しました（traceback に `self.mtp(` を含む）。上流の `main` でも同じ実装で、修正は入っていません。
 
-AutoModel 側の不具合と考えられるため、NVIDIA-NeMo/Automodel への報告候補です。
+**判断の経緯**: 当初は `model.num_nextn_predict_layers: 0` で MTP を無効化しました（LoRA SFT の精度には
+影響しない）。しかし推論で vLLM / SGLang の MTP 投機的デコーディングを使う方針が確定したため、
+**MTP を有効にしたまま学習する方針に変更**しました。理由は、vLLM で LoRA アダプタを重ねて MTP を使うと
+ドラフト（元の MTP ヘッド）とターゲット（アダプタ付き本体）の予測がずれて受理率が下がることが報告されており
+（vLLM RFC #44826）、MTP ヘッドも本体と一緒に学習して整合を保つ必要があるためです。
+
+**MTP を有効にするための条件**（ソースで確認）:
+
+| 条件 | 根拠 |
+|---|---|
+| packed sequence（`packing_strategy: neat`）で学習する | MTP は文書 index 付き mask（`_packed_seq_ids`）から block-causal mask を作る経路（`_mtp_block_causal_mask`、NVBugs 6330129）だけが正しく動く。padded バッチの経路は上記の通り壊れている |
+| `causal-conv1d` をイメージに入れる | packed 時、Qwen3.5 の GDN 層は `causal_conv1d_fn` に `seq_idx` を渡して文書境界を守る。無いと `F.conv1d` にフォールバックし、pack 内の別文書の末尾 3 トークンが混入する。torch 2.10 / CUDA 13 / py3.13 向けのビルド済み wheel は GitHub Releases に無く、nvcc でコンパイルする（10 分前後） |
+| `model.backend.attn: sdpa` を明示する | neat の collater は sdpa 向けに 4D block-causal mask を作り、index mask を `_packed_seq_ids` として別途渡す。TE バックエンドは 4D mask を padding mask として解釈するため経路が異なる |
+| 検証（validation）は padded のままでよい | MTP は `self.training` のときだけ実行されるため、eval では経路に入らない |
+
+無効化していたときに比べ、学習対象パラメータは 3.64M → 3.86M に戻ります（MTP ヘッドにも LoRA が付く）。
+
+**配信側の含意**: LoRA アダプタを重ねる配信では学習した MTP ヘッドが使われないため、
+**LoRA を本体と MTP ヘッドの両方にマージした HF 形式のフルチェックポイント**を作って配信する必要があります。
+AutoModel 同梱の `tools/merge_lora.py` は HF の `AutoModelForCausalLM` + `PeftModel` 経由でマージするため、
+transformers 側で `mtp.*`（と `model.visual.*`）が読み飛ばされ、出力に MTP の重みが含まれません。
+AutoModel のネイティブモデル上でマージし（`LinearLoRA.materialize_effective_weight`）、state dict adapter で
+HF キー（`mtp.layers.0.*`）に戻して書き出すツールを別途用意します（Phase 7）。
+
+### 2.2b AutoModel の attention / Linear バックエンドは既定で TE になる
+
+`BackendConfig` は TE が import でき CUDA が使える環境では `attn` と `linear` の既定が `"te"` になります。
+DLC には TE 2.11 が入っているため、ローカルテスト（MTP 無効・padded）は TE attention と TE Linear で動いていました。
+問題は出ていませんが、packed の mask 経路と後段の LoRA マージ（TE Linear ではなく torch Linear の方が単純）を
+考え、YAML で `backend: {attn: sdpa, linear: torch, rms_norm: torch_fp32}` を明示する方針にしました。
 
 ### 2.3 チャットテンプレートの検証は次フェーズ
 
@@ -118,8 +145,8 @@ SageMaker への含意: Triton のコンパイルはジョブごと・GPU アー
 
 ## 5. 未検証・残課題
 
-- `causal-conv1d` を入れた場合の速度差（A100 で評価する）
-- DLC 同梱の TE 2.11 と AutoModel の要求 2.14 の差（TE attention を使わないため未検証）
-- `attn_implementation: flash_attention_2`（今回は既定の sdpa で検証。A10G / A100 では FA2 が速いはず）
+- **MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト**（方針変更後の再検証。次の作業）
+- LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
+- DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - 複数 GPU での FSDP2（ローカルは 1 GPU のため未検証。SageMaker の `ml.g5.12xlarge` で確認予定）
-- MTP の形状エラーを AutoModel に報告するか
+- MTP の padded 経路の形状エラーを AutoModel に報告するか

@@ -6,7 +6,7 @@ NeMo AutoModel 0.6.0 を載せたイメージを作り、自アカウントの E
 
 | ファイル | 役割 |
 |---|---|
-| `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention`（constraints で pin）+ ビルド時検証。`causal-conv1d` は `--build-arg INSTALL_CAUSAL_CONV1D=1` で opt-in |
+| `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention` + `causal-conv1d`（nvcc でコンパイル、10 分前後）+ ビルド時検証。`--build-arg INSTALL_CAUSAL_CONV1D=0` で causal-conv1d を外せる |
 | `local_train_test.sh` | ローカル GPU でイメージ内から 20 ステップの LoRA 学習を回す（Step 5.5） |
 | `local_sm_sim.sh` | SageMaker の `/opt/ml` 規約と `SM_*` 環境変数を再現して `train.py` を検証（Step 5.6） |
 | `constraints.txt` | AutoModel v0.6.0 の `uv.lock` に合わせた pin。torch の差し替え防止 |
@@ -107,9 +107,9 @@ MODEL_ID=Qwen/Qwen3-0.6B ./local_train_test.sh      # 別モデルで試す場�
 初回は HF Hub からモデル（約 1.6 GB）をダウンロードします（キャッシュは `<repo>/.hf_cache`）。
 最後に `step N | epoch 0 | loss ...` の行と `out/local_test/checkpoints/` の中身が表示されれば成功です。
 
-検証済みの結果（RTX 3090 24 GB、2026-09-14）: 20 ステップ完走、loss 2.82 → 2.23、val loss 2.40 → 2.31、
+検証済みの結果（RTX 3090 24 GB、2026-09-14、MTP 無効・padded 構成）: 20 ステップ完走、loss 2.82 → 2.23、val loss 2.40 → 2.31、
 VRAM 約 3.4 GiB、約 1,400 tokens/s。最初のステップは fla の Triton コンパイルで 77 秒かかり、以降は 1 秒未満。
-`The fast path is not available` の警告は `causal-conv1d` が無いことによるもので、fla のカーネル自体は使われています。
+現在の YAML は MTP 有効・packed (neat) 構成に変更済みで、この構成での再検証が次の作業です。
 Qwen3.5 の線形 attention 層は `flash-linear-attention` の Triton カーネルを使うため、
 初回ステップで Triton のコンパイルに数十秒かかります。
 
@@ -164,8 +164,8 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
 | 症状 | 原因と対処 |
 |---|---|
 | `Fetching 13 files: 92%` で長く止まる | 最後の `model.safetensors`（約 1.6 GB）をダウンロード中。進捗バーはファイル単位でしか進まない。現在のスクリプトはダウンロードを別ステップにしてバイト単位で表示する |
-| `RuntimeError: The expanded size of the tensor (S) must match ... Target sizes: [B, H, S, S]. Tensor sizes: [B, S]`（traceback に `self.mtp(` を含む） | Qwen3.5 の MTP ヘッドの経路で 2D mask が SDPA に渡される AutoModel 0.6.0 の不具合。YAML の `model:` に `num_nextn_predict_layers: 0` を入れて MTP を無効化する（LoRA SFT には不要） |
-| `The fast path is not available ... flash-linear-attention` の警告 | イメージに fla が入っていない（fla 追加前のイメージを使っている）。`build_and_push.sh --no-push` で再ビルド |
+| `RuntimeError: The expanded size of the tensor (S) must match ... Target sizes: [B, H, S, S]. Tensor sizes: [B, S]`（traceback に `self.mtp(` を含む） | Qwen3.5 の MTP ヘッドはパディング付きバッチでは動かない（AutoModel 0.6.0 の不具合）。`packed_sequence.packing_strategy: neat` と `model.backend.attn: sdpa` で packed にする。MTP を使わないなら `model.num_nextn_predict_layers: 0` でも回避できる |
+| `The fast path is not available ... flash-linear-attention` の警告 | fla か causal-conv1d が入っていない古いイメージ。`build_and_push.sh --no-push` で再ビルド。両方入っていればこの警告は出ない |
 | `[ERROR] ... is part of ...'s signature, but not documented` | transformers の docstring チェック。無害 |
 | `grouped_gemm is not available` / `Skipping import of cpp extensions ... torchao` | MoE 用カーネル / torchao の C++ 拡張。dense モデルの LoRA では不要 |
 

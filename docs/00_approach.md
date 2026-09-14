@@ -407,6 +407,12 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - **完了条件**: 8 GPU でのスループットが 1 GPU の 6 倍以上、かつ中断したジョブが
   チェックポイントから正しく再開できる
 
+### Phase 7: 配信用チェックポイントの作成（vLLM / SGLang 向け）
+- LoRA を本体と MTP ヘッドの両方にマージし、HF 形式（`mtp.*` を含む）で書き出すツールを用意する
+  （AutoModel 同梱の `tools/merge_lora.py` は HF クラス経由のため MTP の重みが落ちる。`docs/03` 2.2 参照）
+- vLLM で `--speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'` を付けて起動し、受理率を確認する
+- **完了条件**: マージ済みモデルで MTP 有効時のスループットが無効時を上回る
+
 ## 7. 想定される落とし穴と対策
 
 | # | 論点 | 内容と対策 |
