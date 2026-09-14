@@ -280,6 +280,15 @@ SFT では一般に後者が望ましい挙動ですが、**既存モデルと�
   既存も `save_num_checkpoints_to_keep=-1` で全保存していたので運用は近い
 - `BaseRecipe` のフックで自作する（実装コストは中程度）
 
+### 5.4b Qwen3.5 固有: MTP ヘッドを無効化する
+
+Qwen3.5 は MTP（multi-token prediction）ヘッドの重みを同梱しており、AutoModel 0.6.0 は
+HF config の `num_nextn_predict_layers` を見て学習時に MTP 損失を自動で有効化します。
+この経路はパディング付きバッチ（`packed_sequence_size: 0`）で 2D attention mask が
+そのまま SDPA に渡されて形状エラーになります（ローカル検証で再現）。
+MTP は投機的デコーディング用の補助ヘッドで SFT には不要なため、`model:` に
+`num_nextn_predict_layers: 0` を指定して無効化します。
+
 ### 5.5 その他の小さな差分
 
 | 項目 | 対策 |

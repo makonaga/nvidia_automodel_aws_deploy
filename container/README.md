@@ -138,6 +138,16 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
 | py313 の wheel が無いというエラー | `docs/02_dlc_selection.md` 7 章のフォールバック。`DLC_TAG=2.9.0-gpu-py312-cu130-ubuntu22.04-sagemaker` と `constraints.txt` の `torch==2.9.0` に変えて再ビルド |
 | Apple Silicon で極端に遅い | エミュレーションのため。pip install は数分〜十数分で終わるはずなので待つ。どうしても遅い場合は EC2 (x86) でビルドする |
 
+## ローカル学習テストでつまずきやすい点
+
+| 症状 | 原因と対処 |
+|---|---|
+| `Fetching 13 files: 92%` で長く止まる | 最後の `model.safetensors`（約 1.6 GB）をダウンロード中。進捗バーはファイル単位でしか進まない。現在のスクリプトはダウンロードを別ステップにしてバイト単位で表示する |
+| `RuntimeError: The expanded size of the tensor (S) must match ... Target sizes: [B, H, S, S]. Tensor sizes: [B, S]`（traceback に `self.mtp(` を含む） | Qwen3.5 の MTP ヘッドの経路で 2D mask が SDPA に渡される AutoModel 0.6.0 の不具合。YAML の `model:` に `num_nextn_predict_layers: 0` を入れて MTP を無効化する（LoRA SFT には不要） |
+| `The fast path is not available ... flash-linear-attention` の警告 | イメージに fla が入っていない（fla 追加前のイメージを使っている）。`build_and_push.sh --no-push` で再ビルド |
+| `[ERROR] ... is part of ...'s signature, but not documented` | transformers の docstring チェック。無害 |
+| `grouped_gemm is not available` / `Skipping import of cpp extensions ... torchao` | MoE 用カーネル / torchao の C++ 拡張。dense モデルの LoRA では不要 |
+
 ## 再ビルドが必要になるとき
 
 `train.py` や YAML、Notebook の変更では再ビルド不要です（`source_dir` でジョブごとに配布されます）。

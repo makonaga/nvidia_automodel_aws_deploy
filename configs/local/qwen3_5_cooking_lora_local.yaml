@@ -28,6 +28,12 @@ model:
   _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
   pretrained_model_name_or_path: Qwen/Qwen3.5-0.8B   # 実行スクリプトの MODEL_ID で上書き可
   torch_dtype: bf16
+  # Qwen3.5 は MTP (multi-token prediction) ヘッドを同梱しており、AutoModel 0.6.0 は
+  # HF config の num_nextn_predict_layers を見て学習時に MTP 損失を自動で有効化する。
+  # その経路でパディング付きバッチの 2D attention mask が SDPA に渡され形状エラーになる
+  # (RuntimeError: The expanded size of the tensor ... Target sizes: [B, H, S, S]. Tensor sizes: [B, S])。
+  # MTP は投機的デコーディング用の補助ヘッドで LoRA SFT には不要なため無効化する。
+  num_nextn_predict_layers: 0
 
 peft:
   _target_: nemo_automodel.components._peft.lora.PeftConfig
