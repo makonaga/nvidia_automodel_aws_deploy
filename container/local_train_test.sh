@@ -26,6 +26,18 @@ echo "== model  : ${MODEL_ID}"
 echo "== config : ${CONFIG}"
 echo "== out    : ${REPO_ROOT}/out/local_test"
 
+# --- 1) モデルを先にダウンロード (バイト単位の進捗を表示するため学習とは分ける) ---
+echo "== モデルのダウンロード (キャッシュ済みならスキップ) =="
+docker run --rm --platform linux/amd64 \
+  -v "${REPO_ROOT}:/workspace" \
+  -e HF_HOME=/workspace/.hf_cache \
+  -e HF_TOKEN="${HF_TOKEN:-}" \
+  --entrypoint "" \
+  "${IMAGE}" \
+  python -c "from huggingface_hub import snapshot_download; p=snapshot_download('${MODEL_ID}'); print('cached at', p)"
+
+# --- 2) 学習 ---
+echo "== 学習開始 =="
 docker run --rm --gpus all --platform linux/amd64 \
   --shm-size 8g \
   -v "${REPO_ROOT}:/workspace" \
