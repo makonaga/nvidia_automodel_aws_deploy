@@ -366,7 +366,10 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - ここで詰まる要因（モデルのライセンス同意、VRAM 不足、データセット取得）を
   SageMaker より先に潰しておくのが目的
 
-### Phase 2: SageMaker 用コンテナの作成
+### Phase 2: SageMaker 用コンテナの作成 — **完了（2026-09-14）**
+
+判明した問題と判断は [03_phase2_findings.md](03_phase2_findings.md) に記録。
+
 - `container/Dockerfile`（案 A）を作成: DLC `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker`
   をベースに `pip install nemo-automodel`
 - 既存の `llm-development` イメージと同じ手順でローカル PC から build → ECR push
