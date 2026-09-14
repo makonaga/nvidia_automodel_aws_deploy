@@ -18,10 +18,16 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 
 - [container/README.md](container/README.md) — Docker イメージの作成と ECR への push 手順（ステップバイステップ）
 
+## 学習スクリプトと Notebook
+
+- [src/README.md](src/README.md) — `train.py`（SageMaker ↔ AutoModel アダプタ）の仕様
+- `configs/sagemaker/qwen3_5_cooking_lora.yaml` — SageMaker 用ベース設定
+- `notebooks/01_launch_training_job.ipynb` — Training Job の起動・成果物確認
+
 ## 学習データ
 
 - [data/README.md](data/README.md) — 料理の基礎知識 SFT サンプル（306 件、train/val 分割済み）
 
 ## ステータス
 
-構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）はローカル GPU での学習テストまで完了。Phase 3〜5（train.py / YAML / Notebook）に着手。
+構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）はローカル GPU での学習テストまで完了。Phase 3〜5（train.py / YAML / Notebook）を実装済み。ローカルでの SageMaker 模擬検証と初回ジョブが次のステップ。

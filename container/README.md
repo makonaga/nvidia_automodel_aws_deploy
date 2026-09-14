@@ -8,6 +8,7 @@ NeMo AutoModel 0.6.0 を載せたイメージを作り、自アカウントの E
 |---|---|
 | `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention`（constraints で pin）+ ビルド時検証。`causal-conv1d` は `--build-arg INSTALL_CAUSAL_CONV1D=1` で opt-in |
 | `local_train_test.sh` | ローカル GPU でイメージ内から 20 ステップの LoRA 学習を回す（Step 5.5） |
+| `local_sm_sim.sh` | SageMaker の `/opt/ml` 規約と `SM_*` 環境変数を再現して `train.py` を検証（Step 5.6） |
 | `constraints.txt` | AutoModel v0.6.0 の `uv.lock` に合わせた pin。torch の差し替え防止 |
 | `build_and_push.sh` | DLC ログイン → build → ECR リポジトリ作成 → push を一括実行 |
 | `smoke_test.sh` | ビルド済みイメージの import / CLI / toolkit / `pip check` を確認 |
@@ -111,6 +112,22 @@ VRAM 約 3.4 GiB、約 1,400 tokens/s。最初のステップは fla の Triton 
 `The fast path is not available` の警告は `causal-conv1d` が無いことによるもので、fla のカーネル自体は使われています。
 Qwen3.5 の線形 attention 層は `flash-linear-attention` の Triton カーネルを使うため、
 初回ステップで Triton のコンパイルに数十秒かかります。
+
+### Step 5.6: SageMaker の規約を模して `train.py` を検証（GPU がある場合のみ）
+
+```bash
+./local_sm_sim.sh
+```
+
+`out/sm_sim/opt_ml/` に `/opt/ml` の構造（`input/data/{train,validation}`, `code`, `checkpoints`, `model`, `output/data`）を
+作り、`SM_*` 環境変数を与えてイメージ内で `torchrun ... /opt/ml/code/train.py` を実行します。
+SageMaker の toolkit が行う起動形と同じです。確認するのは次の 3 点です。
+
+1. `=== effective config ===` で `dataset` / `validation_dataset` / `checkpoint_dir` がチャネルのパスに置き換わっている
+2. `=== Sample Prompt 0 ===` に Qwen のチャットテンプレートでレンダリングされた 1 件目が出る
+3. 最後の `/opt/ml/model` の一覧に `model/adapter_model.safetensors`、`effective_config.yaml`、`tokenizer/`、`training_info.json` がある
+
+`MODEL_TAR=/path/to/model.tar.gz ./local_sm_sim.sh` で `model` チャネル（tar.gz）の経路も検証できます。
 
 ### Step 6: ECR へ push
 

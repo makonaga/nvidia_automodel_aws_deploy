@@ -1,0 +1,105 @@
+# =============================================================================
+# SageMaker Training Job 用: Qwen3.5 (dense) + LoRA SFT on cooking_basics
+#
+# パス類 (dataset / validation_dataset / model / checkpoint_dir) は train.py が
+# SageMaker のチャネルと規約ディレクトリで上書きするため、ここの値は
+# ローカル実行時の既定値でしかない。
+# ハイパーパラメータは Notebook から --set や --a.b.c value で上書きできる。
+# =============================================================================
+recipe: TrainFinetuneRecipeForNextTokenPrediction
+
+step_scheduler:
+  global_batch_size: 32
+  local_batch_size: 4            # OOM なら 2 に。global は train.py が world_size で整合させる
+  num_epochs: 3
+  val_every_steps: 20
+  ckpt_every_steps: 50
+  save_checkpoint_every_epoch: true
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 10
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 17
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: Qwen/Qwen3.5-0.8B   # model チャネル or --model_id で上書き
+  torch_dtype: bf16
+  # Qwen3.5 の MTP ヘッドは SFT に不要で、パディング付きバッチで形状エラーになるため無効化
+  num_nextn_predict_layers: 0
+  # A100/A10G 以上なら flash_attention_2 の方が速い (DLC 同梱の flash-attn 2.8.3)。
+  # まずは既定の sdpa で通し、安定したら --model.attn_implementation flash_attention_2 を試す。
+
+peft:
+  _target_: nemo_automodel.components._peft.lora.PeftConfig
+  target_modules: '*_proj'
+  dim: 16
+  alpha: 32                      # rsLoRA 相当にするなら --rslora_alpha <alpha_rs> (train.py が換算)
+  dropout: 0.05
+  use_triton: true
+
+distributed:
+  strategy: fsdp2
+  dp_size: none
+  tp_size: 1
+  cp_size: 1
+  sequence_parallel: false
+
+clip_grad_norm:
+  max_norm: 1.0
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
+  path_or_dataset_id: data/cooking_basics/train.jsonl        # train.py が SM_CHANNEL_TRAIN で上書き
+  column_mapping: {question: prompt, answer: output}        # prompt = instruction + "\n\n" + input
+  use_hf_chat_template: true
+  answer_only_loss_mask: true
+  seq_length: 1024
+  truncation: true
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: true
+  num_workers: 2
+
+validation_dataset:
+  _target_: nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset
+  path_or_dataset_id: data/cooking_basics/val.jsonl          # train.py が SM_CHANNEL_VALIDATION で上書き
+  column_mapping: {question: prompt, answer: output}
+  use_hf_chat_template: true
+  answer_only_loss_mask: true
+  seq_length: 1024
+  truncation: true
+
+validation_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1.0e-4
+  betas: [0.9, 0.999]
+  eps: 1.0e-6
+  weight_decay: 0.01
+
+lr_scheduler:
+  lr_decay_style: cosine
+  min_lr: 6.0e-6                 # Composer 版 alpha_f=0.06 × lr
+  lr_warmup_steps: 0             # --warmup_epochs 1 を渡すと train.py が算出して上書き
+
+checkpoint:
+  enabled: true
+  checkpoint_dir: out/sm_local/checkpoints                   # train.py が /opt/ml/checkpoints で上書き
+  model_save_format: safetensors
+  save_consolidated: true
