@@ -22,15 +22,15 @@ LABEL org.opencontainers.image.title="nemo-automodel-sagemaker" \
 RUN pip check > /tmp/pipcheck_base.txt 2>&1 || true
 
 # --- AutoModel の導入 -------------------------------------------------------
-# 併せて s3fs / aiobotocore / smclarify を削除する。理由:
-#   - datasets 4.2.0 (AutoModel の lock) は fsspec<=2025.9.0 を要求するため、
-#     DLC 同梱の s3fs 2026.7.0 (fsspec 2026.7.0 が必要) と両立しない
-#   - aiobotocore 3.9.1 は DLC 同梱の botocore 1.43.89 とそもそも非互換 (DLC 側の既存衝突)
-#   - この 3 つを使うのは SageMaker Clarify (smclarify) のみで、学習ジョブでは不要。
-#     学習データは SageMaker チャネル経由でローカルディスクから読むため s3fs も不要
+# 注意: datasets 4.2.0 (AutoModel の lock) は fsspec<=2025.9.0 を要求するため、
+# DLC 同梱の s3fs 2026.7.0 (fsspec 2026.7.0 が必要) との整合が取れなくなる。
+# s3fs を使うのはクライアント側 SDK の sagemaker-mlops だけで、学習ジョブ
+# (sagemaker-training / sagemaker-pytorch-training → train.py) では import されない。
+# s3fs を消すと sagemaker (meta) → sagemaker-mlops → s3fs の連鎖で SDK ごと
+# 削除することになるため、DLC のパッケージはそのまま残し、この衝突だけを
+# 下の pip check で「許容済み」として扱う。
 COPY constraints.txt /tmp/constraints.txt
 RUN pip install --no-cache-dir -c /tmp/constraints.txt "nemo-automodel==${AUTOMODEL_VERSION}" \
- && pip uninstall -y s3fs aiobotocore smclarify \
  && rm -rf /root/.cache/pip /tmp/constraints.txt
 
 # --- ビルド時検証 1: torch が差し替わっていないこと、import が通ること -------
@@ -58,15 +58,30 @@ PY
 # この層で新たに生じた衝突があるときだけビルドを失敗させる。
 RUN python - <<'PY'
 import pathlib, subprocess, sys
+# 許容する衝突 (行に含まれるキーワードの組で判定)。理由は各行のコメント参照。
+ACCEPTED = [
+    # datasets 4.2.0 が fsspec<=2025.9.0 を要求するため s3fs 2026.7.0 と整合しない。
+    # s3fs は sagemaker-mlops (クライアント SDK) 専用で、学習ジョブでは使われない。
+    ("s3fs", "fsspec"),
+]
+def accepted(line):
+    return any(all(k in line for k in keys) for keys in ACCEPTED)
+
 base = {l for l in pathlib.Path("/tmp/pipcheck_base.txt").read_text().splitlines() if l.strip()}
 res = subprocess.run(["pip", "check"], capture_output=True, text=True)
 now = [l for l in (res.stdout + res.stderr).splitlines() if l.strip()]
 ok_msg = "No broken requirements found."
-new = [l for l in now if l not in base and l != ok_msg]
+fresh = [l for l in now if l not in base and l != ok_msg]
+new = [l for l in fresh if not accepted(l)]
+tolerated = [l for l in fresh if accepted(l)]
 pre = sorted(base - {ok_msg})
 if pre:
     print("[info] ベース DLC 由来の既存衝突 (無視):")
     for l in pre:
+        print("   ", l)
+if tolerated:
+    print("[warn] この層で生じたが許容済みの衝突 (学習経路では未使用):")
+    for l in tolerated:
         print("   ", l)
 if new:
     print("[error] この層で新たに生じた依存衝突:", file=sys.stderr)
