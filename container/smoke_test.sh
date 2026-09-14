@@ -3,15 +3,22 @@
 # ビルドしたイメージの動作確認 (ローカル)。
 #   ./smoke_test.sh                       # ローカルタグ nemo-automodel-sagemaker:<TAG>
 #   ./smoke_test.sh <image_uri>           # 任意のイメージ
-# GPU があれば --gpus all で CUDA の確認まで行う。
+# GPU があれば --gpus all で CUDA の確認まで行う (SMOKE_GPU=0/1 で強制指定可)。
 # =============================================================================
 set -euo pipefail
 AUTOMODEL_VERSION="${AUTOMODEL_VERSION:-0.6.0}"
 IMAGE="${1:-nemo-automodel-sagemaker:${AUTOMODEL_VERSION}-pt2.10-py313-cu130}"
 
+# GPU 判定: nvidia-smi が「実際に成功する」ことを条件にする。
+# コマンドや Container Toolkit の有無だけで判定すると、ドライバ未ロードの PC で
+# --gpus all が "nvml error: driver not loaded" で失敗する。
+# SMOKE_GPU=0 で強制的に CPU モード、SMOKE_GPU=1 で強制的に GPU モード。
 GPU_ARGS=()
-if command -v nvidia-smi >/dev/null 2>&1 && docker info 2>/dev/null | grep -qi nvidia; then
+if [[ "${SMOKE_GPU:-auto}" == "1" ]] || { [[ "${SMOKE_GPU:-auto}" == "auto" ]] && nvidia-smi >/dev/null 2>&1; }; then
   GPU_ARGS=(--gpus all)
+  echo "GPU モードで実行します (--gpus all)"
+else
+  echo "CPU モードで実行します (GPU 未検出。flash-attn / TE の確認はスキップ)"
 fi
 
 run() { docker run --rm --platform linux/amd64 "${GPU_ARGS[@]}" --entrypoint "" "${IMAGE}" "$@"; }
