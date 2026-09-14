@@ -102,7 +102,8 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
 | `pull access denied` / `no basic auth credentials` | DLC アカウント（763104351884）への `docker login` が切れている。トークンは 12 時間で失効するので Step 3 のログインを再実行 |
 | `no space left on device` | Docker のディスク容量不足。`docker system prune -a` で不要イメージを削除するか、Docker Desktop の Disk image size を増やす |
 | ビルド時検証で `torch が差し替わっています` | 依存解決で torch が再インストールされた。`constraints.txt` の `torch==2.10.0` が効いていないので、pip のログで何が torch を要求したか確認 |
-| `pip check` が失敗 | ログに出た衝突を確認。DLC 側の既存パッケージとの衝突なら `constraints.txt` に該当パッケージの pin を追加して再ビルド |
+| `pip check` が失敗 | ログの `[error] この層で新たに生じた依存衝突` を確認。ベース DLC に元からある衝突は `[info]` として表示され無視されます。新規の衝突が AutoModel と無関係なパッケージなら `Dockerfile` の `pip uninstall` 行に追加、必要なパッケージなら `constraints.txt` で pin を調整して再ビルド |
+| （解決済み）`s3fs ... fsspec` / `aiobotocore ... botocore` の衝突 | `datasets 4.2.0` が `fsspec<=2025.9.0` を要求するため DLC の `s3fs 2026.7.0` と両立せず、`aiobotocore 3.9.1` は DLC の `botocore 1.43.89` と元から非互換。いずれも SageMaker Clarify (`smclarify`) 用で学習には不要なため、`Dockerfile` で 3 つとも削除している |
 | py313 の wheel が無いというエラー | `docs/02_dlc_selection.md` 7 章のフォールバック。`DLC_TAG=2.9.0-gpu-py312-cu130-ubuntu22.04-sagemaker` と `constraints.txt` の `torch==2.9.0` に変えて再ビルド |
 | Apple Silicon で極端に遅い | エミュレーションのため。pip install は数分〜十数分で終わるはずなので待つ。どうしても遅い場合は EC2 (x86) でビルドする |
 

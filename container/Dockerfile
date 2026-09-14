@@ -18,12 +18,22 @@ LABEL org.opencontainers.image.title="nemo-automodel-sagemaker" \
       org.opencontainers.image.description="NeMo AutoModel ${AUTOMODEL_VERSION} on AWS DLC pytorch-training" \
       nemo_automodel.version="${AUTOMODEL_VERSION}"
 
+# --- ベース DLC の時点での pip check 結果を記録 (既存の衝突は AWS 側の事情) ----
+RUN pip check > /tmp/pipcheck_base.txt 2>&1 || true
+
 # --- AutoModel の導入 -------------------------------------------------------
+# 併せて s3fs / aiobotocore / smclarify を削除する。理由:
+#   - datasets 4.2.0 (AutoModel の lock) は fsspec<=2025.9.0 を要求するため、
+#     DLC 同梱の s3fs 2026.7.0 (fsspec 2026.7.0 が必要) と両立しない
+#   - aiobotocore 3.9.1 は DLC 同梱の botocore 1.43.89 とそもそも非互換 (DLC 側の既存衝突)
+#   - この 3 つを使うのは SageMaker Clarify (smclarify) のみで、学習ジョブでは不要。
+#     学習データは SageMaker チャネル経由でローカルディスクから読むため s3fs も不要
 COPY constraints.txt /tmp/constraints.txt
 RUN pip install --no-cache-dir -c /tmp/constraints.txt "nemo-automodel==${AUTOMODEL_VERSION}" \
+ && pip uninstall -y s3fs aiobotocore smclarify \
  && rm -rf /root/.cache/pip /tmp/constraints.txt
 
-# --- ビルド時検証: torch が差し替わっていないこと、import が通ること --------
+# --- ビルド時検証 1: torch が差し替わっていないこと、import が通ること -------
 RUN python - <<'PY'
 import importlib, sys
 import torch
@@ -42,7 +52,29 @@ for mod in ("flash_attn", "transformer_engine", "sagemaker_training", "sagemaker
     except Exception as e:  # GPU が無いビルド環境では TE 等が失敗してもよい
         print(f"{mod:28s}: import failed ({type(e).__name__}: {e})", file=sys.stderr)
 PY
-RUN pip check || (echo "pip check で依存衝突あり。上のログを確認してください" && exit 1)
+
+# --- ビルド時検証 2: pip check ---------------------------------------------
+# ベース DLC に元からあった衝突は [info] として表示するだけにし、
+# この層で新たに生じた衝突があるときだけビルドを失敗させる。
+RUN python - <<'PY'
+import pathlib, subprocess, sys
+base = {l for l in pathlib.Path("/tmp/pipcheck_base.txt").read_text().splitlines() if l.strip()}
+res = subprocess.run(["pip", "check"], capture_output=True, text=True)
+now = [l for l in (res.stdout + res.stderr).splitlines() if l.strip()]
+ok_msg = "No broken requirements found."
+new = [l for l in now if l not in base and l != ok_msg]
+pre = sorted(base - {ok_msg})
+if pre:
+    print("[info] ベース DLC 由来の既存衝突 (無視):")
+    for l in pre:
+        print("   ", l)
+if new:
+    print("[error] この層で新たに生じた依存衝突:", file=sys.stderr)
+    for l in new:
+        print("   ", l, file=sys.stderr)
+    sys.exit(1)
+print("[ok] pip check: 新規の依存衝突なし")
+PY
 
 # --- 実行時の既定値 --------------------------------------------------------
 # HF のキャッシュを書き込み可能な場所に。ジョブ側の environment で上書き可。
