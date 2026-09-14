@@ -173,6 +173,8 @@ RUN pip install --no-cache-dir -c /tmp/constraints.txt nemo-automodel==0.6.0
 
 ## 6. Dockerfile（案）
 
+> 実装は `container/` ディレクトリにあります。手順は `container/README.md` を参照。
+
 ```dockerfile
 ARG REGION=us-west-2
 FROM 763104351884.dkr.ecr.${REGION}.amazonaws.com/pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker

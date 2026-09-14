@@ -1,0 +1,11 @@
+# NVIDIA-NeMo/Automodel v0.6.0 の uv.lock と一致させるための pin。
+# ベース DLC (pytorch-training 2.10.0) に同梱済みの torch / torchdata は
+# ここで同じバージョンを固定することで pip による差し替えを防ぐ。
+torch==2.10.0
+torchdata==0.11.0
+transformers==5.12.1
+torchao==0.14.0
+quack-kernels==0.6.1
+megatron-fsdp==0.5.0
+flashoptim==0.1.3
+datasets==4.2.0
