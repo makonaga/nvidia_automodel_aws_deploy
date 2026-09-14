@@ -24,4 +24,4 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 
 ## ステータス
 
-構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）に着手。
+構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）はローカル GPU での学習テストまで完了。Phase 3〜5（train.py / YAML / Notebook）に着手。

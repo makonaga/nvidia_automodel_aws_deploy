@@ -105,6 +105,10 @@ MODEL_ID=Qwen/Qwen3-0.6B ./local_train_test.sh      # 別モデルで試す場�
 
 初回は HF Hub からモデル（約 1.6 GB）をダウンロードします（キャッシュは `<repo>/.hf_cache`）。
 最後に `step N | epoch 0 | loss ...` の行と `out/local_test/checkpoints/` の中身が表示されれば成功です。
+
+検証済みの結果（RTX 3090 24 GB、2026-09-14）: 20 ステップ完走、loss 2.82 → 2.23、val loss 2.40 → 2.31、
+VRAM 約 3.4 GiB、約 1,400 tokens/s。最初のステップは fla の Triton コンパイルで 77 秒かかり、以降は 1 秒未満。
+`The fast path is not available` の警告は `causal-conv1d` が無いことによるもので、fla のカーネル自体は使われています。
 Qwen3.5 の線形 attention 層は `flash-linear-attention` の Triton カーネルを使うため、
 初回ステップで Triton のコンパイルに数十秒かかります。
 
