@@ -147,6 +147,10 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
   --query 'imageDetails[].{tag:imageTags[0],sizeGB:imageSizeInBytes,pushed:imagePushedAt}' --output table
 ```
 
+push 済み（2026-09-15）: `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`
+（ローカル 19.7 GB → ECR 上の圧縮サイズ約 9.6 GB。`docker push` 時に大半のレイヤが `Layer already exists` と出るのは
+ベース DLC 由来のレイヤが既に自アカウントのリポジトリに存在するためで正常です）。
+
 ## つまずきやすい点
 
 | 症状 | 原因と対処 |
