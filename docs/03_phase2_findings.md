@@ -117,11 +117,35 @@ LoRA のキー不足（`base_model.model.mtp.layers.0.*.lora_A.weight` など 16
 **モデル・PEFT・packing の設定を変えるときは `checkpoint_s3_uri` の prefix（Notebook の `RUN_TAG`）を変える**か、
 `train.py` の `fresh_start: 1` で既存チェックポイントを捨てます。ローカルテストは既定で消してから始めます。
 
-### 2.3 チャットテンプレートの検証は次フェーズ
+### 2.3 チャットテンプレートのレンダリング
 
-`use_hf_chat_template: true` で Qwen3.5 のテンプレートが適用されることは確認しましたが、
-既存 Composer 版の `enable_thinking=False` と同じレンダリングになるかは未検証です。
-`train.py` が学習前に出力する `=== Sample Prompt 0 ===` で突き合わせます（`docs/01` 5.2 参照）。
+`train.py` が学習前に出力する `=== Sample Prompt 0 ===` は次の形でした（2026-09-15）。
+
+```
+<|im_start|>user
+「いちょう切り」とはどのような切り方ですか？<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+いちょう切りは、…<|im_end|>
+```
+
+assistant 応答の前に空の `<think>\n\n</think>\n\n` ブロックが入ります。Qwen3 系テンプレートが非思考モードで
+出す形式で、既存 Composer 版の `enable_thinking=False` も同じ空ブロックを出していたはずです。
+既存出力と突き合わせて一致していれば、`docs/01` 5.2 の Step 2（自前 dataset）は不要です。
+なお `answer_only_loss_mask: true` ではこの空ブロックも assistant 側として損失対象になるため、
+モデルは「空の think ブロックを出してから答える」ことを学習します（非思考モードの配信と整合）。
+
+### 2.4 `train.py` の模擬検証（`local_sm_sim.sh`）
+
+SageMaker の `/opt/ml` 構造と `SM_*` 環境変数を再現し、toolkit と同じ `torchrun ... train.py` で 10 ステップ実行。
+チャネルのパス写像、実効設定の書き出し（`/opt/ml/output/data/effective_config.yaml`）、cosine スケジューラ、
+エポック末の検証とチェックポイント、`LOWEST_VAL` の選択、`/opt/ml/model` への成果物コピー
+（`model/adapter_model.safetensors`、`adapter_config.json`、`tokenizer/`、`training_info.json`、`training.jsonl`）まで動作した。
+判明した不具合: transformers 5 の `apply_chat_template(tokenize=True)` は dict を返すため
+pack 数の見積もりが壊れていた（修正済み）。
 
 ---
 

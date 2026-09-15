@@ -35,8 +35,13 @@ from pathlib import Path
 
 import yaml
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | sm_train | %(message)s")
 log = logging.getLogger("sm_train")
+if not log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | sm_train | %(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False  # ルートロガー (AutoModel / httpx) の書式を変えない
 
 RANK = int(os.environ.get("RANK", "0"))
 LOCAL_RANK = int(os.environ.get("LOCAL_RANK", "0"))
@@ -312,7 +317,9 @@ def estimate_num_packs(cfg: dict, paths: list[str], n_samples: int, pack_size: i
             rows = [json.loads(l) for l in f if l.strip()] if path.endswith(".jsonl") else json.load(f)
         for r in rows[: max(1, probe - len(lens))]:
             msgs = [{"role": "user", "content": r[q_col]}, {"role": "assistant", "content": r[a_col]}]
-            L = len(tok.apply_chat_template(msgs, tokenize=True, add_generation_prompt=False))
+            enc = tok.apply_chat_template(msgs, tokenize=True, add_generation_prompt=False, return_dict=True)
+            ids = enc["input_ids"] if isinstance(enc, dict) or hasattr(enc, "keys") else enc
+            L = len(ids)
             lens.append(min(L, seq_len) if seq_len else L)
         if len(lens) >= probe:
             break
