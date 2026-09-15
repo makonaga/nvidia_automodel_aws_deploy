@@ -145,7 +145,8 @@ SageMaker の `/opt/ml` 構造と `SM_*` 環境変数を再現し、toolkit と�
 エポック末の検証とチェックポイント、`LOWEST_VAL` の選択、`/opt/ml/model` への成果物コピー
 （`model/adapter_model.safetensors`、`adapter_config.json`、`tokenizer/`、`training_info.json`、`training.jsonl`）まで動作した。
 判明した不具合: transformers 5 の `apply_chat_template(tokenize=True)` は dict を返すため
-pack 数の見積もりが壊れていた（修正済み）。
+pack 数の見積もりが壊れていた。修正後の再検証で `avg_tokens=127 → packs≈34`（実際は 33 pack）、
+`warmup_epochs 0.5 → lr_warmup_steps 4` となり、LR が 4 ステップで立ち上がってから cosine 減衰することを確認した。
 
 ---
 
