@@ -9,8 +9,8 @@
 recipe: TrainFinetuneRecipeForNextTokenPrediction
 
 step_scheduler:
-  global_batch_size: 16           # packed では 1 サンプル = 1 pack (2048 トークン)
-  local_batch_size: 2            # pack 単位。OOM なら 1 に。global は train.py が world_size で整合させる
+  global_batch_size: 8            # packed では 1 サンプル = 1 pack (2048 トークン)。cooking データは 1 エポック ≈ 17 pack
+  local_batch_size: 1            # pack 単位。A10G 24GB なら 1、A100 80GB なら 2〜4。global は train.py が world_size で整合させる
   num_epochs: 3
   val_every_steps: 20
   ckpt_every_steps: 50

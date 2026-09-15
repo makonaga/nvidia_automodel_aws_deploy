@@ -109,7 +109,8 @@ MODEL_ID=Qwen/Qwen3-0.6B ./local_train_test.sh      # 別モデルで試す場�
 
 検証済みの結果（RTX 3090 24 GB、2026-09-14、MTP 無効・padded 構成）: 20 ステップ完走、loss 2.82 → 2.23、val loss 2.40 → 2.31、
 VRAM 約 3.4 GiB、約 1,400 tokens/s。最初のステップは fla の Triton コンパイルで 77 秒かかり、以降は 1 秒未満。
-現在の YAML は MTP 有効・packed (neat) 構成に変更済みで、この構成での再検証が次の作業です。
+MTP 有効・packed (neat) 構成（2026-09-15）: 約 5,500 tokens/s、VRAM 14.5 GiB、val loss 2.38。
+packed では 1 エポックのステップ数が少ないため、`max_steps` に届く前にエポック末で正常終了することがあります（エラーではありません）。
 Qwen3.5 の線形 attention 層は `flash-linear-attention` の Triton カーネルを使うため、
 初回ステップで Triton のコンパイルに数十秒かかります。
 
