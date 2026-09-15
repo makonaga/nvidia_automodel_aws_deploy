@@ -64,6 +64,10 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
                    help="/opt/ml/model にコピーするチェックポイント")
     p.add_argument("--checkpoint_dir", default=None, help="checkpoint.checkpoint_dir の明示指定 (既定: /opt/ml/checkpoints)")
     p.add_argument("--print_sample", type=int, default=1, help="学習前にレンダリング済みプロンプトを N 件表示 (0 で無効)")
+    p.add_argument("--fresh_start", type=int, default=0,
+                   help="1 なら checkpoint_dir の既存チェックポイントを削除してから学習する。"
+                        "AutoModel は既存の最新チェックポイントから自動再開するため、モデル/PEFT 設定を変えたのに"
+                        "同じ checkpoint_s3_uri を使うと非互換で落ちる。Spot 中断からの再開を使うときは 0 のままにする")
     args, unknown = p.parse_known_args(argv)
     return args, unknown
 
@@ -182,6 +186,22 @@ def extract_tar_once(tar_path: str, dest: Path) -> Path:
     return dest
 
 
+def clear_checkpoint_dir_once(ckpt_dir: Path) -> None:
+    """--fresh_start: ノードごとに 1 回だけ (local rank 0 が) 既存チェックポイントを削除し、他 rank は待つ。"""
+    if not ckpt_dir or not ckpt_dir.exists():
+        return
+    marker = ckpt_dir.parent / f".fresh_start.{os.environ.get('TORCHELASTIC_RUN_ID', 'local')}"
+    if LOCAL_RANK == 0:
+        entries = [p for p in ckpt_dir.iterdir()]
+        for p in entries:
+            shutil.rmtree(p) if p.is_dir() and not p.is_symlink() else p.unlink()
+        log.warning("--fresh_start: %s の既存チェックポイント %d 件を削除しました", ckpt_dir, len(entries))
+        marker.touch()
+    else:
+        while not marker.exists():
+            time.sleep(1)
+
+
 def resolve_model_dir(channel_dir: str) -> str:
     d = Path(channel_dir)
     if (d / "config.json").exists():
@@ -234,6 +254,8 @@ def apply_sagemaker_mapping(cfg: dict, args: argparse.Namespace) -> None:
         set_dotted(cfg, "checkpoint.enabled", True)
         os.makedirs(ckpt_dir, exist_ok=True)
         log.info("checkpoint_dir ← %s", ckpt_dir)
+    if args.fresh_start:
+        clear_checkpoint_dir_once(Path(get_dotted(cfg, "checkpoint.checkpoint_dir", ckpt_dir or "")))
 
     if IS_SAGEMAKER and get_dotted(cfg, "dist_env.timeout_minutes", 1) < 10:
         set_dotted(cfg, "dist_env.timeout_minutes", 10)

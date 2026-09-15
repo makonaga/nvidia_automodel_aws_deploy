@@ -6,6 +6,7 @@
 #   ./local_train_test.sh                       # 既定: Qwen/Qwen3.5-0.8B
 #   MODEL_ID=Qwen/Qwen3-0.6B ./local_train_test.sh   # モデルを差し替え
 #   HF_TOKEN=hf_xxx ./local_train_test.sh       # gated モデルの場合
+#   CLEAN=0 ./local_train_test.sh               # 前回のチェックポイントから再開する動作を確認
 #
 # 出力: <repo>/out/local_test/ (チェックポイント・ログ)。HF のキャッシュは <repo>/.hf_cache。
 # =============================================================================
@@ -20,6 +21,13 @@ EXTRA_ARGS=("$@")   # 追加の --key.subkey=value 上書き
 
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || { echo "GPU が見えません"; exit 1; }
 mkdir -p "${REPO_ROOT}/out/local_test" "${REPO_ROOT}/.hf_cache"
+
+# AutoModel は checkpoint_dir に残っているチェックポイントから自動で再開する (非互換でも続行して落ちる)。
+# 設定を変えて試すのが目的なので、既定では前回の出力を消してから始める。CLEAN=0 で再開の動作確認ができる。
+if [[ "${CLEAN:-1}" == "1" ]]; then
+  rm -rf "${REPO_ROOT}/out/local_test/checkpoints"
+  echo "== 前回のチェックポイントを削除しました (CLEAN=0 で再開テスト)"
+fi
 
 echo "== image  : ${IMAGE}"
 echo "== model  : ${MODEL_ID}"

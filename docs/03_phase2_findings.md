@@ -105,6 +105,18 @@ DLC には TE 2.11 が入っているため、ローカルテスト（MTP 無効
 問題は出ていませんが、packed の mask 経路と後段の LoRA マージ（TE Linear ではなく torch Linear の方が単純）を
 考え、YAML で `backend: {attn: sdpa, linear: torch, rms_norm: torch_fp32}` を明示する方針にしました。
 
+### 2.2c チェックポイントの自動再開は設定変更に弱い
+
+AutoModel は `checkpoint.restore_from` が未指定だと **`checkpoint_dir` にある最新のチェックポイントから
+自動で再開**し、モデル構成が非互換でも「警告を出して続行」します（`base_recipe.load_checkpoint`）。
+MTP を有効にして再実行した際、前回（MTP 無効）のチェックポイントが残っていたため自動再開が走り、
+LoRA のキー不足（`base_model.model.mtp.layers.0.*.lora_A.weight` など 16 件）の警告の後、
+オプティマイザ状態の読み込みで `TypeError: cannot pickle code objects` になりました。
+
+自動再開そのものは Spot 中断からの復帰に必要な挙動です。運用ルールとして、
+**モデル・PEFT・packing の設定を変えるときは `checkpoint_s3_uri` の prefix（Notebook の `RUN_TAG`）を変える**か、
+`train.py` の `fresh_start: 1` で既存チェックポイントを捨てます。ローカルテストは既定で消してから始めます。
+
 ### 2.3 チャットテンプレートの検証は次フェーズ
 
 `use_hf_chat_template: true` で Qwen3.5 のテンプレートが適用されることは確認しましたが、

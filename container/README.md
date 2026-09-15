@@ -166,6 +166,7 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
 | `Fetching 13 files: 92%` で長く止まる | 最後の `model.safetensors`（約 1.6 GB）をダウンロード中。進捗バーはファイル単位でしか進まない。現在のスクリプトはダウンロードを別ステップにしてバイト単位で表示する |
 | `RuntimeError: The expanded size of the tensor (S) must match ... Target sizes: [B, H, S, S]. Tensor sizes: [B, S]`（traceback に `self.mtp(` を含む） | Qwen3.5 の MTP ヘッドはパディング付きバッチでは動かない（AutoModel 0.6.0 の不具合）。`packed_sequence.packing_strategy: neat` と `model.backend.attn: sdpa` で packed にする。MTP を使わないなら `model.num_nextn_predict_layers: 0` でも回避できる |
 | `The fast path is not available ... flash-linear-attention` の警告 | fla か causal-conv1d が入っていない古いイメージ。`build_and_push.sh --no-push` で再ビルド。両方入っていればこの警告は出ない |
+| `Loading checkpoint from .../epoch_N_step_M` の直後に `Checkpoint key mismatch` や `TypeError: cannot pickle code objects` | `checkpoint_dir` に前回の（設定が違う）チェックポイントが残っていて自動再開した。`local_train_test.sh` は既定で消す（`CLEAN=0` で再開テスト）。SageMaker では `checkpoint_s3_uri` の prefix を変えるか `fresh_start: 1` |
 | `[ERROR] ... is part of ...'s signature, but not documented` | transformers の docstring チェック。無害 |
 | `grouped_gemm is not available` / `Skipping import of cpp extensions ... torchao` | MoE 用カーネル / torchao の C++ 拡張。dense モデルの LoRA では不要 |
 
