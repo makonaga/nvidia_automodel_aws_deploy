@@ -173,6 +173,8 @@ push 済み（2026-09-15）: `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-
 | `The fast path is not available ... flash-linear-attention` の警告 | fla か causal-conv1d が入っていない古いイメージ。`build_and_push.sh --no-push` で再ビルド。両方入っていればこの警告は出ない |
 | `Loading checkpoint from .../epoch_N_step_M` の直後に `Checkpoint key mismatch` や `TypeError: cannot pickle code objects` | `checkpoint_dir` に前回の（設定が違う）チェックポイントが残っていて自動再開した。`local_train_test.sh` は既定で消す（`CLEAN=0` で再開テスト）。SageMaker では `checkpoint_s3_uri` の prefix を変えるか `fresh_start: 1` |
 | `[ERROR] ... is part of ...'s signature, but not documented` | transformers の docstring チェック。無害 |
+| `rm: cannot remove 'out/...': Permission denied` | コンテナ内の root が作ったファイルはホストの一般ユーザーでは消せない。現在のスクリプトはコンテナ経由で削除し、終了時に `chown` する。手動で直すなら `docker run --rm -v "$PWD/out:/out" <image> chown -R $(id -u):$(id -g) /out` |
+| packed 構成で `max_steps` より早く終了する | エラーではなくエポック末。packed ではバッチ単位が pack なので 1 エポックのステップ数が少ない（cooking データ、pack 1024、global batch 8 で 4 ステップ）。`num_epochs` を増やす |
 | `grouped_gemm is not available` / `Skipping import of cpp extensions ... torchao` | MoE 用カーネル / torchao の C++ 拡張。dense モデルの LoRA では不要 |
 
 ## 再ビルドが必要になるとき

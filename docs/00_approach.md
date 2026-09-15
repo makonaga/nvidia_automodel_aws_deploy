@@ -375,23 +375,23 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - 既存の `llm-development` イメージと同じ手順でローカル PC から build → ECR push
   （DLC の pull には `aws ecr get-login-password` による 763104351884 への docker login が必要）
 - py313 wheel が無い依存があれば 2.9 (py312) にフォールバック
-- ECR へ push（**Training Job と同一リージョン**であること）
+- ECR へ push（**Training Job と同一リージョン**であること）— 2026-09-15 完了
 - **完了条件**: ECR のイメージを `docker run` して `python -c "import nemo_automodel"` と
   `automodel --help` が通る
 
-### Phase 3: `train.py` の実装
+### Phase 3: `train.py` の実装 — **完了（2026-09-15、ローカル模擬検証まで）**
 - 5.1 / 5.2 の設計に沿って実装
 - ローカル（Phase 1 の EC2）で SageMaker のディレクトリ構造を手で作って擬似実行し、
   パス写像が正しいことを確認
 - **完了条件**: `/opt/ml/...` 相当のパスを使って torchrun 経由で学習が回る
 
-### Phase 4: 設定ファイルの整備
+### Phase 4: 設定ファイルの整備 — **完了（2026-09-15）**
 - `configs/` に SageMaker 前提のベース YAML を用意
   （`checkpoint_dir` や `dataset` はどうせ `train.py` が上書きするので既定値でよい）
-- まず 1B クラスの小さいモデル（`meta-llama/Llama-3.2-1B`）で通し、
-  その後ターゲットモデルへ差し替える
+- まず 1B クラスの小さいモデルで通し、その後ターゲットモデルへ差し替える
+  （実際は `Qwen/Qwen3.5-0.8B` + 料理データで通した。`configs/sagemaker/qwen3_5_cooking_lora.yaml`）
 
-### Phase 5: Notebook の実装と単一ノード実行
+### Phase 5: Notebook の実装と単一ノード実行 — **Notebook 実装済み、初回ジョブは未実行**
 - 5.3 の構成で Notebook を作成
 - `instance_count=1` で実行 → CloudWatch にログ、S3 に成果物が出ることを確認
 - **完了条件**: `model.tar.gz` に consolidated な safetensors が入っている

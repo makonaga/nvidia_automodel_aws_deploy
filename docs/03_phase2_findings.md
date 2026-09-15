@@ -1,8 +1,9 @@
 # Phase 2（コンテナ作成）で判明したこと
 
-作業日: 2026-09-14
+作業日: 2026-09-14〜15
 検証環境: ローカル PC（NVIDIA GeForce RTX 3090 24 GB、Docker Engine、AWS us-west-2）
-成果物: `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（19.4 GB。DLC 単体とほぼ同サイズ）
+成果物: `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（19.7 GB。DLC 単体とほぼ同サイズ。ECR 上は圧縮で約 9.6 GB）
+ECR: `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（2026-09-15 push）
 
 本ドキュメントは「発生した問題 → 原因 → 判断」の記録です。スクリプトの実装詳細は
 `container/README.md` と各ファイルのコメントに委ねます。
@@ -178,11 +179,34 @@ pack 数の見積もりが壊れていた。修正後の再検証で `avg_tokens
 SageMaker への含意: Triton のコンパイルはジョブごと・GPU アーキテクチャごとに発生するため、
 短いジョブでは相対的に無視できない。反復開発ではウォームプールの利用を検討する。
 
+### 4.1 MTP 有効・packed (neat) 構成（2026-09-15、同じモデル・LoRA dim 8、seq 512、pack 1024、local batch 2）
+
+| 項目 | 値 |
+|---|---|
+| スループット | 約 5,500 tokens/s（padded の約 4 倍。パディングが無くなり 1 pack に複数サンプルが詰まるため） |
+| VRAM | 約 14.5 GiB（padded の 3.4 GiB から大幅増。pack 長 1024 の 4D block-causal mask と MTP ヘッドの追加計算による） |
+| val loss | 約 2.38（padded・MTP 無効の 2.31 と同水準。MTP 損失が train loss に加算されるため、train loss は単純比較できない） |
+| 1 エポックの pack 数 | 33 pack（245 サンプル、平均 127 トークン）。`global_batch_size: 8` では **1 エポック = 4 ステップ** |
+
+**気づき: packed ではバッチサイズの単位が「サンプル」から「pack」に変わる。** `global_batch_size: 8` は
+8 pack ≈ 60 サンプル前後に相当し、1 エポックのステップ数が padded の 1/8 程度になる。
+初回の packed 実行が「step 4 で止まった」ように見えたのはエラーではなく、`num_epochs: 1` の
+エポック末で正常終了しただけだった（`max_steps: 20` には届かない）。この性質から:
+
+- ローカル設定は `num_epochs` を増やして `max_steps` で打ち切る形にした
+- SageMaker 用の既定は `global_batch_size: 4`（pack 単位）に下げ、Notebook のコメントに pack 換算を書いた
+- `warmup_epochs` からウォームアップ step 数を求めるには pack 数の見積もりが必要で、`train.py` が
+  データを tokenize して算出する（§2.4）。padded 時はサンプル数から直接求める
+
+VRAM の増加は `packed_sequence_size` にほぼ比例するため、7B〜13B 級で A100 80GB を使うときは
+pack 長 2048〜4096 と `local_batch_size: 1` から始めて上げていく。
+
 ---
 
 ## 5. 未検証・残課題
 
-- **MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト**（方針変更後の再検証。次の作業）
+- ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
+- SageMaker 上での初回ジョブ（ml.g5.2xlarge）。toolkit の torchrun 起動、チャネル写像、`/opt/ml/model` の成果物を実機で確認する
 - LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - 複数 GPU での FSDP2（ローカルは 1 GPU のため未検証。SageMaker の `ml.g5.12xlarge` で確認予定）
