@@ -19,8 +19,12 @@ OPT_ML="${REPO_ROOT}/out/sm_sim/opt_ml"
 
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || { echo "GPU が見えません"; exit 1; }
 
-# --- /opt/ml の再現 ---
-rm -rf "${OPT_ML}"
+# --- /opt/ml の再現 (前回の出力は root 所有なのでイメージ内で削除し、終了時に所有権を戻す) ---
+mkdir -p "${REPO_ROOT}/out"
+in_image() { docker run --rm --platform linux/amd64 -v "${REPO_ROOT}/out:/out" --entrypoint "" "${IMAGE}" "$@"; }
+fix_owner() { in_image chown -R "$(id -u):$(id -g)" /out >/dev/null 2>&1 || true; }
+trap fix_owner EXIT
+in_image rm -rf /out/sm_sim
 mkdir -p "${OPT_ML}"/{input/data/train,input/data/validation,input/config,model,checkpoints,output/data,code}
 cp "${REPO_ROOT}/data/cooking_basics/train.jsonl" "${OPT_ML}/input/data/train/"
 cp "${REPO_ROOT}/data/cooking_basics/val.jsonl"   "${OPT_ML}/input/data/validation/"

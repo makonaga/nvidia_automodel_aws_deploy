@@ -22,10 +22,16 @@ EXTRA_ARGS=("$@")   # 追加の --key.subkey=value 上書き
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || { echo "GPU が見えません"; exit 1; }
 mkdir -p "${REPO_ROOT}/out/local_test" "${REPO_ROOT}/.hf_cache"
 
+# コンテナは root で動くため、出力ファイルはホストの一般ユーザーでは消せない。
+# 削除と所有権の変更はイメージ内で行う (docker run 以外に sudo 等を要求しない)。
+in_image() { docker run --rm --platform linux/amd64 -v "${REPO_ROOT}/out:/out" --entrypoint "" "${IMAGE}" "$@"; }
+fix_owner() { in_image chown -R "$(id -u):$(id -g)" /out >/dev/null 2>&1 || true; }
+trap fix_owner EXIT
+
 # AutoModel は checkpoint_dir に残っているチェックポイントから自動で再開する (非互換でも続行して落ちる)。
 # 設定を変えて試すのが目的なので、既定では前回の出力を消してから始める。CLEAN=0 で再開の動作確認ができる。
 if [[ "${CLEAN:-1}" == "1" ]]; then
-  rm -rf "${REPO_ROOT}/out/local_test/checkpoints"
+  in_image rm -rf /out/local_test/checkpoints
   echo "== 前回のチェックポイントを削除しました (CLEAN=0 で再開テスト)"
 fi
 
