@@ -263,7 +263,7 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - `[Gloo] Rank N is connected to 7 peer ranks` が 8 rank 分×複数回、行が混ざって出るが無害
 - `barrier(): using the device under current context` の UserWarning はチェックポイント保存時の torch の注意で無害
 - `sm_train` の行（`dataset ←`、`packing 見積もり` など）は各 rank が出すので 8 回並ぶ。`effective config` と `Sample Prompt` は rank 0 のみ
-- p4d は確保待ちが数分ある。`waiting for capacity` が 10 分を超えるようならリージョン内の在庫不足で、時間をずらすか On-Demand Capacity Reservation を検討する
+- p4d は確保待ちが数分ある（実測 6 分）。長引く場合はリージョン内の在庫不足が考えられる
 
 ## 5. 未検証・残課題
 
