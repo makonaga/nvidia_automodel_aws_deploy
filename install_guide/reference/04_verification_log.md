@@ -1,12 +1,12 @@
-# Phase 2（コンテナ作成）で判明したこと
+# 検証記録（問題・原因・判断と実測値）
 
 作業日: 2026-09-14〜15、2026-09-24（初回 SageMaker ジョブ）
 検証環境: ローカル PC（NVIDIA GeForce RTX 3090 24 GB、Docker Engine、AWS us-west-2）
 成果物: `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（19.7 GB。DLC 単体とほぼ同サイズ。ECR 上は圧縮で約 9.6 GB）
 ECR: `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（2026-09-15 push）
 
-本ドキュメントは「発生した問題 → 原因 → 判断」の記録です。スクリプトの実装詳細は
-`container/README.md` と各ファイルのコメントに委ねます。
+本ドキュメントは「発生した問題 → 原因 → 判断」と実測値の記録です。手順は `../01_container_build.md` 以降のガイド、
+スクリプトの実装詳細は各ファイルのコメントに委ねます。アカウント固有の値（アカウント ID、バケット名）は実施時のものです。
 
 ---
 
@@ -135,7 +135,7 @@ LoRA のキー不足（`base_model.model.mtp.layers.0.*.lora_A.weight` など 16
 
 assistant 応答の前に空の `<think>\n\n</think>\n\n` ブロックが入ります。Qwen3 系テンプレートが非思考モードで
 出す形式で、既存 Composer 版の `enable_thinking=False` も同じ空ブロックを出していたはずです。
-既存出力と突き合わせて一致していれば、`docs/01` 5.2 の Step 2（自前 dataset）は不要です。
+既存出力と突き合わせて一致していれば、`02_composer_migration.md` 5.2 の Step 2（自前 dataset）は不要です。
 なお `answer_only_loss_mask: true` ではこの空ブロックも assistant 側として損失対象になるため、
 モデルは「空の think ブロックを出してから答える」ことを学習します（非思考モードの配信と整合）。
 

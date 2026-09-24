@@ -1,5 +1,8 @@
 # Composer 版 SFT から NeMo AutoModel への移行設計
 
+既存の MosaicML Composer 版 SFT ジョブを AutoModel に移す際の対応関係と機能ギャップをまとめたものです。  
+実装は `../05_configuration.md` の設定 YAML と `train.py` に反映済みです。本番モデルでの精度比較（8 章）は未実施です。
+
 参照した既存実装:
 
 | ファイル | 役割 |
@@ -286,7 +289,7 @@ Qwen3.5 は MTP（multi-token prediction）ヘッドを同梱しており、vLLM
 使います。LoRA アダプタを重ねる配信では元の MTP ヘッドが使われて受理率が下がるため、
 **MTP ヘッドも本体と一緒に学習し、マージ済みのフルチェックポイントを配信する**方針です。
 
-AutoModel 0.6.0 の MTP はパディング付きバッチでは形状エラーになるため（`docs/03` 2.2）、
+AutoModel 0.6.0 の MTP はパディング付きバッチでは形状エラーになるため（`04_verification_log.md` 2.2）、
 `packed_sequence: {packed_sequence_size: N, packing_strategy: neat}` と `model.backend.attn: sdpa` を
 指定し、イメージに `causal-conv1d` を入れます。packed では `global_batch_size` / `local_batch_size` の
 単位が「サンプル」ではなく「pack（N トークン）」になる点に注意してください。

@@ -7,7 +7,7 @@
 #   - EFA / aws-ofi-nccl / flash-attn 2.8.3 / TransformerEngine 2.11 を同梱
 # 追加: nemo-automodel (PyPI) を v0.6.0 の lock に合わせて pin して導入
 #
-# 選定理由と比較は docs/02_dlc_selection.md を参照。
+# 選定理由と比較は install_guide/reference/03_dlc_selection.md を参照。
 # =============================================================================
 ARG REGION=us-west-2
 ARG DLC_TAG=2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker

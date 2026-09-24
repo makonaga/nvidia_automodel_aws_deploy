@@ -183,7 +183,7 @@ nvcc でコンパイルします（10 分前後）。packed sequence で学習�
 
 ## 6. Dockerfile（案）
 
-> 実装は `container/` ディレクトリにあります。手順は `container/README.md` を参照。
+> 実装は `container/` ディレクトリにあります。手順は `../01_container_build.md` を参照。
 
 ```dockerfile
 ARG REGION=us-west-2

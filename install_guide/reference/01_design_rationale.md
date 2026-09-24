@@ -1,4 +1,4 @@
-# NeMo AutoModel を Amazon SageMaker Training Job で動かす — 構築アプローチ
+# 設計判断の根拠（構築アプローチの検討記録）
 
 対象: NVIDIA [NeMo AutoModel](https://github.com/NVIDIA-NeMo/Automodel)（PyTorch DTensor ネイティブな LLM/VLM 学習ライブラリ）
 
@@ -6,7 +6,9 @@
 1. AutoModel 導入済みのカスタムコンテナを作成し、SageMaker Training Job で使用する
 2. 学習スクリプト `train.py` と、Jupyter Notebook ベースのジョブ実行スクリプトを用意する
 
-本ドキュメントは実装前の**構築アプローチ（手順）の検討結果**です。
+本ドキュメントは実装前の**構築アプローチ（手順）の検討結果**をそのまま残したものです。  
+実装後の構成と手順は `../00_overview.md` 以降のガイドを正とし、ここでは「なぜこの構成にしたか」の根拠として参照してください。  
+フェーズ計画（6 章）には実施済みの印を付けています。
 
 ## 0. 確定スコープ
 
@@ -27,7 +29,7 @@
 既存の MosaicML Composer 版 SFT スクリプト（Qwen3-1.7B の judge モデルを rsLoRA + FSDP で
 学習するもの）を移行元とします。ベースモデル・学習データはいずれも S3 上にあります。
 移行にあたっての対応関係と機能ギャップは
-**[01_composer_to_automodel.md](01_composer_to_automodel.md)** に詳述しています。
+**[02_composer_migration.md](02_composer_migration.md)** に詳述しています。
 
 なお AutoModel 側に **rsLoRA / `enable_thinking=False` / EarlyStopper が無い**ため、
 そのままでは既存と等価になりません。回避策はいずれも同ドキュメントに記載しています。
@@ -186,7 +188,7 @@ RUN pip install --no-cache-dir nemo-automodel
 | `2.9.0-gpu-py312-cu130-ubuntu22.04-sagemaker` | 3.12 | 13.0 | 2025-10-15 | **2026-10-15（来月）** |
 
 **2.10 (py313) を採用**します。詳細な比較と wheel 互換性の検証結果は
-[02_dlc_selection.md](02_dlc_selection.md) を参照してください。
+[03_dlc_selection.md](03_dlc_selection.md) を参照してください。
 
 - ✅ `sagemaker-training` toolkit / EFA / `aws-ofi-nccl` / エントリポイント規約がすべて組み込み済み。
   **SageMaker 連携部分にリスクがない**
@@ -225,7 +227,9 @@ RUN /opt/venv/bin/pip install --no-cache-dir sagemaker-training
 
 ---
 
-## 4. リポジトリ構成（予定）
+## 4. リポジトリ構成（検討時点の予定）
+
+> 実際の構成はリポジトリ直下の `README.md` を参照してください。`docs/` は `install_guide/` に、`sm_paths.py` は `train.py` に統合されています。
 
 ```
 .
@@ -368,7 +372,7 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 
 ### Phase 2: SageMaker 用コンテナの作成 — **完了（2026-09-14）**
 
-判明した問題と判断は [03_phase2_findings.md](03_phase2_findings.md) に記録。
+判明した問題と判断は [04_verification_log.md](04_verification_log.md) に記録。
 
 - `container/Dockerfile`（案 A）を作成: DLC `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker`
   をベースに `pip install nemo-automodel`
@@ -391,12 +395,12 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - まず 1B クラスの小さいモデルで通し、その後ターゲットモデルへ差し替える
   （実際は `Qwen/Qwen3.5-0.8B` + 料理データで通した。`configs/sagemaker/qwen3_5_cooking_lora.yaml`）
 
-### Phase 5: Notebook の実装と単一ノード実行 — **完了（2026-09-24、ml.g5.2xlarge で完走。`docs/03` §4.2）**
+### Phase 5: Notebook の実装と単一ノード実行 — **完了（2026-09-24、ml.g5.2xlarge で完走。`04_verification_log.md` 4.2）**
 - 5.3 の構成で Notebook を作成
 - `instance_count=1` で実行 → CloudWatch にログ、S3 に成果物が出ることを確認
 - **完了条件**: `model.tar.gz` に consolidated な safetensors が入っている
 
-### Phase 6: スケールと運用性の確認（単一ノード） — **6-1 完了（2026-09-24、ml.p4d.24xlarge 8 GPU。`docs/03` §4.3）**
+### Phase 6: スケールと運用性の確認（単一ノード） — **6-1 完了（2026-09-24、ml.p4d.24xlarge 8 GPU。`04_verification_log.md` 4.3）**
 1. 1 GPU → 1 ノード多 GPU（`ml.p4d.24xlarge` = 8×A100 40GB / `ml.g5.48xlarge` = 8×A10G 24GB）
    - 13B 級の LoRA は FSDP2 でシャードすれば `ml.g5.48xlarge` でも収まる見込みだが、
      余裕を見るなら `ml.p4d.24xlarge` を第一候補とする
@@ -409,7 +413,7 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 
 ### Phase 7: 配信用チェックポイントの作成（vLLM / SGLang 向け）
 - LoRA を本体と MTP ヘッドの両方にマージし、HF 形式（`mtp.*` を含む）で書き出すツールを用意する
-  （AutoModel 同梱の `tools/merge_lora.py` は HF クラス経由のため MTP の重みが落ちる。`docs/03` 2.2 参照）
+  （AutoModel 同梱の `tools/merge_lora.py` は HF クラス経由のため MTP の重みが落ちる。`04_verification_log.md` 2.2 参照）
 - vLLM で `--speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'` を付けて起動し、受理率を確認する
 - **完了条件**: マージ済みモデルで MTP 有効時のスループットが無効時を上回る
 

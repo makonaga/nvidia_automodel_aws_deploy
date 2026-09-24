@@ -54,12 +54,12 @@ dataset:
 ### S3 への配置
 
 ```bash
-BUCKET=<your-bucket>
+BUCKET=<your-bucket>   # Notebook のセル「1. 学習データを S3 へ」が同じことを行うので、手動で置く場合のみ
 aws s3 cp data/cooking_basics/train.jsonl s3://$BUCKET/data/cooking_basics/train/train.jsonl
 aws s3 cp data/cooking_basics/val.jsonl   s3://$BUCKET/data/cooking_basics/validation/val.jsonl
 ```
 
-SageMaker では `train` / `validation` チャネルとして渡します（`docs/01_composer_to_automodel.md` 3.2 参照）。
+SageMaker では `train` / `validation` チャネルとして渡します（`install_guide/05_configuration.md` 参照）。
 
 ### 再生成・追加
 
