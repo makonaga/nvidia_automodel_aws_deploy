@@ -16,7 +16,7 @@ toolkit の torchrun 起動・チャネル写像・チェックポイント同�
 | クォータ | Service Quotas > Amazon SageMaker > `ml.g5.2xlarge for training job usage` が 1 以上。0 なら申請（承認に数時間〜1 日） |
 | 実行ロール | Studio のユーザープロファイルに紐づく実行ロール（Notebook 内で `sagemaker.get_execution_role()` が返すもの）。`AmazonSageMakerFullAccess` 相当があれば自アカウント ECR からの pull、既定バケットの読み書き、CloudWatch Logs が通る |
 | ネットワーク | Training Job が HF Hub に到達できること（Estimator に VPC を指定しない、network isolation なし）。Studio ドメインが VPC-only モードでも Training Job には影響しない |
-| Notebook 実行環境 | SageMaker Studio の JupyterLab（SageMaker Distribution イメージ、`ml.t3.medium` で十分）。`sagemaker` SDK は同梱 |
+| Notebook 実行環境 | SageMaker Studio の JupyterLab（SageMaker Distribution イメージ、`ml.t3.medium` で十分）。`sagemaker` SDK は同梱で追加インストール不要 |
 
 ## Step 1: Studio で JupyterLab を起動する
 
@@ -36,11 +36,9 @@ cd ~
 git clone https://github.com/makonaga/nvidia_automodel_aws_deploy.git
 cd nvidia_automodel_aws_deploy
 git checkout claude/automodel-sagemaker-integration-w5kdwn
-pip install -U "sagemaker>=2.200"
-python -c "import sagemaker, boto3; print(sagemaker.__version__, boto3.Session().region_name)"
 ```
 
-- 最後の行が `2.2xx.x us-west-2` のように出れば OK（リージョンが違う場合は Studio ドメインのリージョンが違うので、us-west-2 の Studio で開き直す）
+- `sagemaker` SDK は SageMaker Distribution に同梱されているので追加インストールは不要（バージョンとリージョンは Step 4 のセル 1 で表示される）
 - リポジトリが private の場合、`git clone` で GitHub のユーザー名と Personal Access Token（`repo` スコープ）を聞かれる。
   代わりにローカル PC で `git archive -o repo.zip HEAD` を作り JupyterLab の Upload ボタンで持ち込んでも構わない
 - Studio のホームディレクトリ（`/home/sagemaker-user`）は space を停止しても保持される
@@ -56,7 +54,7 @@ Estimator の `source_dir='../src'` / `dependencies=['../configs']` は Notebook
 
 確認すること:
 
-- `region us-west-2` と表示される
+- `region us-west-2` と表示される（違う場合は Studio ドメインのリージョンが違うので、us-west-2 の Studio で開き直す）
 - `image_uri` が `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130` になっている
 - `bucket` は既定の `sagemaker-us-west-2-290918126236`。既存のデータバケットを使う場合はここで書き換える（実行ロールがそのバケットを読み書きできること）
 - Studio では `role` は自動取得される。`SAGEMAKER_ROLE` の設定は不要
