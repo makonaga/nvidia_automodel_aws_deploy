@@ -139,6 +139,8 @@ GPU 数（8）、クォータ名（`ml.p4d.24xlarge for training job usage`）�
 `step N` の `tps` が 1 GPU の数倍になっていること、`mem` が 1 GPU より下がっていること（FSDP2 でパラメータとオプティマイザ状態が分散される）。
 17 pack / global 8 なので 1 エポック 2 ステップ、3 エポックで 6 ステップの短いジョブになる。
 
+実測（2026-09-24）: 確保待ち 6 分 + 準備 3.5 分、学習 3 分、課金 289 秒で完走。詳細は `docs/03_phase2_findings.md` §4.3。
+
 ## 失敗したときに共有するもの
 
 1. Notebook に流れたログの、`Invoking script with the following command:` から最後のエラーまで

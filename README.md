@@ -32,4 +32,4 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 
 ## ステータス
 
-構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）はローカル GPU での学習テストまで完了。Phase 3〜5（train.py / YAML / Notebook）を実装済み。MTP 有効 + packed + causal-conv1d の構成でローカル学習テスト済み。train.py の模擬検証まで完了。イメージを ECR に push 済み（`290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`）。初回 SageMaker ジョブ（ml.g5.2xlarge、Studio から起動）が完走し、Phase 5 まで完了。次は Phase 6（複数 GPU・再開・Spot）と Phase 7（vLLM/SGLang 向けマージ）。
+構築アプローチの検討フェーズ。スコープ確定済み（7B〜13B 級 / LoRA・PEFT / 単一ノード多 GPU / S3 チャネル）。コンテナは AWS DLC 拡張方式を採用。Phase 2（コンテナ作成）はローカル GPU での学習テストまで完了。Phase 3〜5（train.py / YAML / Notebook）を実装済み。MTP 有効 + packed + causal-conv1d の構成でローカル学習テスト済み。train.py の模擬検証まで完了。イメージを ECR に push 済み（`290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`）。初回 SageMaker ジョブ（ml.g5.2xlarge）と 8 GPU（ml.p4d.24xlarge、FSDP2）が完走し、Phase 6-1 まで完了。次は Phase 6-2/6-3（再開・Spot）と Phase 7（vLLM/SGLang 向けマージ）。

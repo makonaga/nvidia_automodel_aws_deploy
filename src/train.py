@@ -294,7 +294,8 @@ def apply_derived_settings(cfg: dict, args: argparse.Namespace) -> None:
             if pack_size > 0:
                 # packed では 1 サンプル = 1 pack。トークン数を一部サンプルから見積もって pack 数に換算する
                 n = estimate_num_packs(cfg, paths, n, pack_size)
-            steps_per_epoch = max(1, math.ceil(n / gbs))
+            # AutoModel は global_batch_size に満たない最後のバッチを捨てるので floor で合わせる (8 GPU 実機で確認)
+            steps_per_epoch = max(1, n // gbs)
             warmup = int(round(steps_per_epoch * args.warmup_epochs))
             cfg.setdefault("lr_scheduler", {})
             set_dotted(cfg, "lr_scheduler.lr_warmup_steps", warmup)

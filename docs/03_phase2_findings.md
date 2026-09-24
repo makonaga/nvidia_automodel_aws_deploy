@@ -232,11 +232,37 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - DLC 起動時の `CUDA compat package should be installed for NVIDIA driver smaller than 580.178.04 / Current installed ... 595.91.07 / Skipping CUDA compat setup` は
   DLC の起動スクリプトの情報表示。ホストのドライバが新しいので compat 層は不要という意味で正常
 
+## 4.3 8 GPU（ml.p4d.24xlarge = 8×A100 40GB）での確認（2026-09-24）
+
+「実行構成」セルの `target='p4d'` だけ変えて再実行（global batch 8 pack = local 1 × 8 GPU、3 エポック）。**完走**。
+
+| 項目 | 値 |
+|---|---|
+| 起動 | `waiting for capacity` 6 分 + インスタンス準備 3.5 分（g5.2xlarge の 1 分に比べ p4d は確保に時間がかかる）。イメージ pull は 30 秒未満 |
+| 分散 | toolkit が `torchrun --nnodes 1 --nproc_per_node 8`。`rank 0/8`〜`7/8`、`World size: 8`、`NCCL 2.28.9+cuda13.0`。モジュール名が `FSDPQwen3_5ForConditionalGeneration` / `FSDPQwen3_5DenseBlock` になり FSDP2 でシャーディングされている |
+| ステップ | 17 pack / 8 = **1 エポック 2 ステップ**（余り 1 pack は捨てられる）、計 6 ステップ。`train.py` は ceil で 3 と見積もっていたので floor に修正 |
+| 最初のステップ | 121 秒（8 rank が並列に Triton コンパイル）。最初の検証 41 秒 |
+| スループット | 定常 21,000〜30,000 tokens/s（2,600〜3,800 /GPU）。1 GPU の A10G（3,900）とほぼ同じ /GPU 値で、データが小さすぎて（1 GPU あたり 1 pack、1 エポック 2 ステップ）オーバーヘッド支配。スケーリングの評価には本番規模のデータが必要 |
+| VRAM | 14.1 GiB/GPU（1 GPU の 14.5 GiB とほぼ同じ）。0.8B のパラメータは 1.6 GB しかなく、メモリは pack 2048 の活性化と MTP が支配的なので FSDP2 で分散しても減らない。7B 級ではパラメータ・オプティマイザ状態の分散が効く |
+| loss | train 3.24 → 2.70、val 2.65 → 2.57 → 2.51。1 GPU の 15 ステップより学習量が少ない（6 ステップ、バッチ 8）ため高めで、期待どおり |
+| 課金 | 289 秒 |
+
+**気づき**
+
+- `Model parameters are DTensors (FSDP2) — skipping fp32 parameter restoration ... Only buffers will be restored to fp32` の警告:
+  `rms_norm: torch_fp32` の RMSNorm 重みを fp32 に戻す処理が FSDP2 では（パラメータ群の dtype を揃える必要があるため）スキップされる。
+  RMSNorm の計算自体は fp32 で行われるので実害なし。1 GPU（FSDP2 なし）では出ない
+- `[Gloo] Rank N is connected to 7 peer ranks` が 8 rank 分×複数回、行が混ざって出るが無害
+- `barrier(): using the device under current context` の UserWarning はチェックポイント保存時の torch の注意で無害
+- `sm_train` の行（`dataset ←`、`packing 見積もり` など）は各 rank が出すので 8 回並ぶ。`effective config` と `Sample Prompt` は rank 0 のみ
+- p4d は確保待ちが数分ある。`waiting for capacity` が 10 分を超えるようならリージョン内の在庫不足で、時間をずらすか On-Demand Capacity Reservation を検討する
+
 ## 5. 未検証・残課題
 
 - ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
 - ~~SageMaker 上での初回ジョブ（ml.g5.2xlarge）~~ → 2026-09-24 完了（§4.2）
-- Phase 6: 複数 GPU（`ml.g5.12xlarge`）、`checkpoint_s3_uri` からの再開、Spot 中断・再開
+- ~~Phase 6-1: 複数 GPU~~ → 2026-09-24 ml.p4d.24xlarge で完了（§4.3）。8 GPU でのスループット倍率は本番規模データで再評価
+- Phase 6-2/6-3: `checkpoint_s3_uri` からの再開、Spot 中断・再開
 - LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - MTP の padded 経路の形状エラーを AutoModel に報告するか

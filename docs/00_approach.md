@@ -396,7 +396,7 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - `instance_count=1` で実行 → CloudWatch にログ、S3 に成果物が出ることを確認
 - **完了条件**: `model.tar.gz` に consolidated な safetensors が入っている
 
-### Phase 6: スケールと運用性の確認（単一ノード）
+### Phase 6: スケールと運用性の確認（単一ノード） — **6-1 完了（2026-09-24、ml.p4d.24xlarge 8 GPU。`docs/03` §4.3）**
 1. 1 GPU → 1 ノード多 GPU（`ml.p4d.24xlarge` = 8×A100 40GB / `ml.g5.48xlarge` = 8×A10G 24GB）
    - 13B 級の LoRA は FSDP2 でシャードすれば `ml.g5.48xlarge` でも収まる見込みだが、
      余裕を見るなら `ml.p4d.24xlarge` を第一候補とする
