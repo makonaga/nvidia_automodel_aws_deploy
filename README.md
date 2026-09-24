@@ -92,15 +92,16 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 | `04_scale_and_operations.md` | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え                                 |
 | `05_configuration.md`        | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物                           |
 | `06_troubleshooting.md`      | トラブルシューティング                                                       |
+| `07_inference_and_merge.md`  | 学習したアダプタの推論、マージ、vLLM 配信（検証中）                            |
 | `reference/`                 | 設計判断の根拠、Composer 版からの移行設計、DLC の選定、検証記録、AutoModel 設定 YAML のパラメータ一覧 |
 
 **container** ディレクトリには、コンテナイメージの定義とスクリプトが含まれています。`Dockerfile`、依存の pin（`constraints.txt`）、ビルドと push を行う `build_and_push.sh`、ローカル検証用の `smoke_test.sh`、`local_train_test.sh`、`local_sm_sim.sh` です。
 
-**src** ディレクトリには、SageMaker のエントリポイント `train.py` が含まれています。Training Job の `source_dir` としてアップロードされます。
+**src** ディレクトリには、SageMaker のエントリポイント `train.py` が含まれています。Training Job の `source_dir` としてアップロードされます。`src/inference/` はアダプタ推論の検証ジョブ用で、`peft` を追加インストールする `requirements.txt` を持つため学習用とは分けています。
 
 **configs** ディレクトリには、AutoModel の設定 YAML が含まれています。`sagemaker/` が Training Job 用、`local/` がローカル検証用です。Training Job では `dependencies` として `src` と一緒にアップロードされます。
 
-**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb` が含まれています。SageMaker Studio の JupyterLab で実行します。
+**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb` と、学習したアダプタを HF でロードして生成を検証する `02_verify_adapter_inference.ipynb` が含まれています。SageMaker Studio の JupyterLab で実行します。
 
 **data** ディレクトリには、動作確認用のサンプルデータ（料理の基礎知識に関する日本語の instruction データ 306 件）と、その生成スクリプトが含まれています。形式は `data/README.md` を参照してください。
 
@@ -147,6 +148,8 @@ Notebook の各セルの意味、ログの見どころ、成果物の確認方�
 8 GPU は実施済みで、再開と Spot と本番差し替えは手順のみで未実施です。
 
 設定リファレンス（install_guide/05_configuration.md）では、`train.py` のハイパーパラメータ、SageMaker の規約と AutoModel 設定の対応、設定 YAML の各セクションの意図、学習データの形式、`model.tar.gz` の内容、CloudWatch メトリクスを説明しています。
+
+推論とマージのガイド（install_guide/07_inference_and_merge.md）では、学習した LoRA アダプタを HF transformers + PEFT でロードして生成する検証、マージ済みモデルの作成と vLLM での配信、MTP ヘッドを含めたマージの手順をまとめる予定です。現時点ではステップ1 の検証スクリプトと Notebook を用意した段階で、実機での確認は未実施です。
 
 トラブルシューティングガイド（install_guide/06_troubleshooting.md）では、コンテナのビルド、ローカル検証、Training Job で発生する問題と解決方法、ログに出る無害なメッセージの一覧をまとめています。  
 問題が発生した際に参照してください。

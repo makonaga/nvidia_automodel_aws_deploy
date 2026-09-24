@@ -1,0 +1,2 @@
+# 検証ジョブ (infer_adapter.py) 専用。学習ジョブの source_dir (src/) には含めない。
+peft==0.18.1

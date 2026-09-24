@@ -17,6 +17,7 @@
 | `04_scale_and_operations.md`               | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え          |
 | `05_configuration.md`                      | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物の仕様 |
 | `06_troubleshooting.md`                    | トラブルシューティング                                |
+| `07_inference_and_merge.md`                | アダプタの推論、マージ、vLLM 配信                     |
 | `reference/01_design_rationale.md`         | 設計判断の根拠（AutoModel の起動方式、コンテナ方針の比較、落とし穴）    |
 | `reference/02_composer_migration.md`       | MosaicML Composer 版 SFT からの移行設計と設定マッピング    |
 | `reference/03_dlc_selection.md`            | ベース DLC イメージの選定                            |

@@ -15,6 +15,7 @@ NeMo AutoModel を Amazon SageMaker Training Job で動かすためのガイド�
 | `04_scale_and_operations.md`               | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え               | 8 GPU は実施済み（`ml.p4d.24xlarge`）。再開・Spot・本番差し替えは**未実施** |
 | `05_configuration.md`                      | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物         | —                                                     |
 | `06_troubleshooting.md`                    | トラブルシューティング                                     | —                                                     |
+| `07_inference_and_merge.md`                | アダプタの推論、マージ、vLLM 配信                          | **未実施**（ステップ1 の検証スクリプトと Notebook を用意済み） |
 | `reference/01_design_rationale.md`         | 設計判断の根拠（AutoModel の起動方式、コンテナ方針の比較、落とし穴）         | —                                                     |
 | `reference/02_composer_migration.md`       | MosaicML Composer 版 SFT からの移行設計と設定マッピング         | 設定 YAML と `train.py` に反映済み。本番モデルでの精度比較は未実施            |
 | `reference/03_dlc_selection.md`            | ベース DLC イメージの選定                                 | 選定結果でビルド・実行済み                                         |
@@ -31,6 +32,7 @@ NeMo AutoModel を Amazon SageMaker Training Job で動かすためのガイド�
 | 自分のデータとモデルに合わせて設定を変える              | `05_configuration.md` → `reference/05_automodel_yaml_reference.md`          |
 | Composer 版の学習設定を移植する               | `reference/02_composer_migration.md` → `05_configuration.md`                |
 | AutoModel のバージョンやベース DLC を変える      | `01_container_build.md`（ビルドオプション）→ `reference/03_dlc_selection.md`          |
+| 学習したアダプタで推論・配信する         | `07_inference_and_merge.md`                                                  |
 | 問題が起きた                             | `06_troubleshooting.md` → `reference/04_verification_log.md`                |
 | なぜこの構成なのかを知る                       | `00_overview.md` → `reference/01_design_rationale.md`                       |
 
