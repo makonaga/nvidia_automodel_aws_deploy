@@ -87,7 +87,7 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 | `04_scale_and_operations.md` | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え |
 | `05_configuration.md` | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物 |
 | `06_troubleshooting.md` | トラブルシューティング |
-| `reference/` | 設計判断の根拠、Composer 版からの移行設計、DLC の選定、検証記録 |
+| `reference/` | 設計判断の根拠、Composer 版からの移行設計、DLC の選定、検証記録、AutoModel 設定 YAML のパラメータ一覧 |
 
 **container** ディレクトリには、コンテナイメージの定義とスクリプトが含まれています。`Dockerfile`、依存の pin（`constraints.txt`）、ビルドと push を行う `build_and_push.sh`、ローカル検証用の `smoke_test.sh`、`local_train_test.sh`、`local_sm_sim.sh` です。
 
@@ -152,6 +152,9 @@ Composer 版からの移行設計（install_guide/reference/02_composer_migratio
 
 ベース DLC の選定（install_guide/reference/03_dlc_selection.md）では、AutoModel 0.6.0 の要求と各 DLC の比較、Python 3.13 での wheel 互換性の検証、フォールバック案を説明しています。
 
+AutoModel 設定 YAML リファレンス（install_guide/reference/05_automodel_yaml_reference.md）では、AutoModel 0.6.0 の LLM 微調整レシピが読み取る YAML の全セクションとパラメータ、既定値、このリポジトリでの設定値を、上流のソースを調査して一覧にしています。  
+上流のドキュメントにはパラメータ一覧が無いため、設定を変えるときの一次資料として使えます。
+
 検証記録（install_guide/reference/04_verification_log.md）では、構築中に発生した問題とその原因、判断の経緯（依存衝突、MTP の形状エラー、チェックポイントの自動再開など）と、ローカル GPU、`ml.g5.2xlarge`、`ml.p4d.24xlarge` での実測値（スループット、VRAM、所要時間、loss）を記録しています。
 
 ## サポートとコントリビューション
@@ -178,6 +181,6 @@ Composer 版からの移行設計（install_guide/reference/02_composer_migratio
 - SageMaker Studio から Training Job を起動し成果物を確認する Notebook（インスタンスの選択からバッチサイズとチェックポイント prefix を導出）
 - 動作確認用の日本語 instruction データ 306 件
 - `ml.g5.2xlarge`（1 GPU）と `ml.p4d.24xlarge`（8 GPU、FSDP2）での完走を確認
-- 構築ガイド、設定リファレンス、トラブルシューティング、設計判断と検証の記録
+- 構築ガイド、設定リファレンス、AutoModel 設定 YAML のパラメータ一覧、トラブルシューティング、設計判断と検証の記録
 
 ---

@@ -19,6 +19,7 @@ NeMo AutoModel を Amazon SageMaker Training Job で動かすためのガイド�
 | `reference/02_composer_migration.md` | MosaicML Composer 版 SFT からの移行設計と設定マッピング | 設定 YAML と `train.py` に反映済み。本番モデルでの精度比較は未実施 |
 | `reference/03_dlc_selection.md` | ベース DLC イメージの選定 | 選定結果でビルド・実行済み |
 | `reference/04_verification_log.md` | 構築中に判明した問題・原因・判断と、ローカル / SageMaker での実測値 | — |
+| `reference/05_automodel_yaml_reference.md` | AutoModel 0.6.0 の設定 YAML パラメータ一覧（ソースから調査） | — |
 
 ## 目的別の入口
 
@@ -27,7 +28,7 @@ NeMo AutoModel を Amazon SageMaker Training Job で動かすためのガイド�
 | 一から構築する | `01_container_build.md` → `02_local_verification.md` → `03_training_job.md` |
 | ECR にイメージがある状態で Training Job を実行する | `03_training_job.md` |
 | 8 GPU で実行する、Spot を使う、本番モデルに差し替える | `04_scale_and_operations.md` |
-| 自分のデータとモデルに合わせて設定を変える | `05_configuration.md` |
+| 自分のデータとモデルに合わせて設定を変える | `05_configuration.md` → `reference/05_automodel_yaml_reference.md` |
 | Composer 版の学習設定を移植する | `reference/02_composer_migration.md` → `05_configuration.md` |
 | AutoModel のバージョンやベース DLC を変える | `01_container_build.md`（ビルドオプション）→ `reference/03_dlc_selection.md` |
 | 問題が起きた | `06_troubleshooting.md` → `reference/04_verification_log.md` |

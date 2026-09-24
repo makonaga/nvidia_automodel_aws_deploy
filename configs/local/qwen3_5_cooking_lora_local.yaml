@@ -19,10 +19,8 @@ dist_env:
   backend: nccl
   timeout_minutes: 5
 
-rng:
-  _target_: nemo_automodel.components.training.rng.StatefulRNG
-  seed: 17
-  ranked: true
+# 乱数シード。v0.6.0 のレシピはトップレベルの seed だけを読む (rng セクションは無視される)
+seed: 17
 
 model:
   _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained

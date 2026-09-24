@@ -21,6 +21,7 @@
 | `reference/02_composer_migration.md` | MosaicML Composer 版 SFT からの移行設計と設定マッピング |
 | `reference/03_dlc_selection.md` | ベース DLC イメージの選定 |
 | `reference/04_verification_log.md` | 構築中に判明した問題・原因・判断と、実測値の記録 |
+| `reference/05_automodel_yaml_reference.md` | AutoModel 0.6.0 の設定 YAML パラメータ一覧 |
 
 ## NeMo AutoModel とは
 

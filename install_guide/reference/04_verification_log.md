@@ -139,6 +139,14 @@ assistant 応答の前に空の `<think>\n\n</think>\n\n` ブロックが入り�
 なお `answer_only_loss_mask: true` ではこの空ブロックも assistant 側として損失対象になるため、
 モデルは「空の think ブロックを出してから答える」ことを学習します（非思考モードの配信と整合）。
 
+### 2.3b `rng:` セクションは読まれず、シードは `seed` で決まる
+
+設定 YAML のパラメータ一覧（`05_automodel_yaml_reference.md`）を作るために v0.6.0 のレシピを読んだところ、
+`train_ft.py` は乱数シードをトップレベルの `seed`（既定 42）からしか読まず、上流の example YAML に広く残っている
+`rng: {_target_: StatefulRNG, seed, ranked}` セクションは参照していないことが分かった（2026-09-24）。
+このリポジトリの YAML も example を雛形にして `rng.seed: 17` と書いていたため、これまでの検証はすべてシード 42 で動いていた。
+`seed: 17` をトップレベルに置き、`rng` セクションは削除した。学習結果の再現性以外への影響はない。
+
 ### 2.4 `train.py` の模擬検証（`local_sm_sim.sh`）
 
 SageMaker の `/opt/ml` 構造と `SM_*` 環境変数を再現し、toolkit と同じ `torchrun ... train.py` で 10 ステップ実行。

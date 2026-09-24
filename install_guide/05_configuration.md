@@ -58,12 +58,14 @@ AutoModel は `global_batch_size` に満たない最後のバッチを捨てる�
 ## 設定 YAML
 
 `configs/sagemaker/qwen3_5_cooking_lora.yaml` が SageMaker 用のベース設定です。  
+各セクションの全パラメータと既定値は `reference/05_automodel_yaml_reference.md` を参照してください。  
 パス類（`dataset`、`validation_dataset`、`model`、`checkpoint_dir`）は `train.py` が上書きするため、YAML の値はローカル実行時の既定値でしかありません。
 
 主要セクションと、このリポジトリでの設定値の意図を示します。
 
 | セクション | 設定値 | 意図 |
 | --- | --- | --- |
+| `seed` | `17` | 乱数シード。トップレベルに書く（`rng:` セクションは v0.6.0 のレシピでは読まれない） |
 | `step_scheduler` | `global_batch_size: 8`、`local_batch_size: 1`、`num_epochs: 3`、`val_every_steps: 20`、`ckpt_every_steps: 50`、`save_checkpoint_every_epoch: true` | packed では単位が pack。Notebook が GPU 数から `global_batch_size` を上書きする |
 | `model.backend` | `attn: sdpa`、`linear: torch`、`rms_norm: torch_fp32` | AutoModel の `BackendConfig` は TransformerEngine が使える環境では既定が `te` になる。packed の mask 経路を確実にし、後段の LoRA マージを単純にするため明示する |
 | `model`（MTP） | `num_nextn_predict_layers` を上書きしない | HF config の値のまま MTP ヘッドを有効にする。無効にするなら `model.num_nextn_predict_layers: 0` |
