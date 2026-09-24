@@ -23,6 +23,7 @@ NVIDIA の LLM/VLM 学習フレームワーク [NeMo AutoModel](https://github.c
 
 - [src/README.md](src/README.md) — `train.py`（SageMaker ↔ AutoModel アダプタ）の仕様
 - `configs/sagemaker/qwen3_5_cooking_lora.yaml` — SageMaker 用ベース設定
+- [notebooks/README.md](notebooks/README.md) — AWS 上での初回 Training Job 実行手順（ステップバイステップ）
 - `notebooks/01_launch_training_job.ipynb` — Training Job の起動・成果物確認
 
 ## 学習データ
