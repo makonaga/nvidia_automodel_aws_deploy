@@ -402,7 +402,11 @@ def export_final_model(cfg: dict, args: argparse.Namespace, effective_cfg_path: 
     if final is None:
         log.error("コピーできるチェックポイントが %s にありません", ckpt_dir)
         return
-    shutil.copytree(final / "model", out_dir / "model", dirs_exist_ok=True)
+    # /opt/ml/checkpoints 配下には SageMaker の同期エージェントが "*.sagemaker-uploaded" というマーカーを置くので除外する
+    shutil.copytree(
+        final / "model", out_dir / "model", dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("*.sagemaker-uploaded"),
+    )
     for extra in ("config.yaml",):
         if (final / extra).exists():
             shutil.copy2(final / extra, out_dir / extra)

@@ -4,7 +4,7 @@ SageMaker Studio の JupyterLab から `01_launch_training_job.ipynb` を実行�
 初回は `ml.g5.2xlarge`（1×A10G 24 GB）で `Qwen/Qwen3.5-0.8B` + 料理データ（245 件）を 3 エポック学習し、
 toolkit の torchrun 起動・チャネル写像・チェックポイント同期・`model.tar.gz` の出力を確認します。
 
-所要時間の目安: 25〜35 分（インスタンス起動とイメージ pull 8〜12 分、モデル DL 1〜2 分、学習 5〜10 分、成果物アップロード 1 分）。
+所要時間の目安: 10 分前後（実測 2026-09-24: 起動とイメージ pull 4 分、モデル DL 16 秒、学習 3 分、成果物アップロード 30 秒。課金 443 秒）。
 課金はインスタンス起動〜終了の間のみ（`ml.g5.2xlarge` は us-west-2 で 1 時間 1.5 USD 前後）。
 
 ## 前提
@@ -90,12 +90,12 @@ S3 URI が 2 行表示されます。
 | 段階 | 目安 | 期待するログ |
 |---|---|---|
 | 起動 | 0〜2 分 | `Starting - Starting the training job...` → `Downloading - Downloading input data` |
-| イメージ pull | 5〜10 分 | `Training - Training image download completed. Training in progress.`（ここまでログが止まって見えるのは正常） |
+| イメージ pull | 3〜5 分 | `Training - Training image download completed. Training in progress.`（ここまでログが止まって見えるのは正常） |
 | toolkit | 直後 | `Invoking script with the following command:` に続いて `torchrun --nnodes 1 --nproc_per_node 1 ... train.py --config qwen3_5_cooking_lora.yaml --final_checkpoint LOWEST_VAL ...` |
 | train.py | 直後 | `rank 0/1 \| config=... \| sagemaker=True`、`dataset ← /opt/ml/input/data/train/train.jsonl`、`model ← Qwen/Qwen3.5-0.8B (--model_id)`、`checkpoint_dir ← /opt/ml/checkpoints`、`packing 見積もり: samples=245, avg_tokens=127, pack_size=2048 → packs≈17`、`lr_warmup_steps ← 4`、`=== effective config ===` |
 | モデル DL | 1〜2 分 | `Fetching 13 files` の進捗。`Warning: You are sending unauthenticated requests` は public モデルなので無視 |
 | サンプル確認 | 直後 | `=== Sample Prompt 0 (rendered with chat template) ===` に `<\|im_start\|>user ... <\|im_start\|>assistant\n<think>\n\n</think>\n\n` の形が出る |
-| 学習 | 5〜10 分 | 最初のステップは Triton コンパイルで 1〜2 分かかる。以降 `step N \| epoch E \| loss ... \| grad_norm ... \| lr ... \| tps ...` が 1 エポック 4〜5 ステップで進み、エポック末に `[val] ... loss ...` と `Saving checkpoint` |
+| 学習 | 3〜5 分 | 最初のステップは Triton コンパイルで約 100 秒、最初の検証も約 40 秒かかる。以降 `step N \| epoch E \| loss ... \| grad_norm ... \| lr ... \| tps ...` が 1 エポック 4〜5 ステップで進み、エポック末に `[val] ... loss ...` と `Saving checkpoint` |
 | 終了 | 1 分 | `最終チェックポイント: ... (LOWEST_VAL)` → `成果物を /opt/ml/model へコピーしました` → `Reporting training SUCCESS` → `Uploading - Uploading generated training model` → `Completed` |
 
 `[ERROR] ... is part of ...'s signature, but not documented` は transformers の docstring チェックで無害です（`docs/03` 3 章）。

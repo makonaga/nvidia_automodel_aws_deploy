@@ -1,6 +1,6 @@
 # Phase 2（コンテナ作成）で判明したこと
 
-作業日: 2026-09-14〜15
+作業日: 2026-09-14〜15、2026-09-24（初回 SageMaker ジョブ）
 検証環境: ローカル PC（NVIDIA GeForce RTX 3090 24 GB、Docker Engine、AWS us-west-2）
 成果物: `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（19.7 GB。DLC 単体とほぼ同サイズ。ECR 上は圧縮で約 9.6 GB）
 ECR: `290918126236.dkr.ecr.us-west-2.amazonaws.com/nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（2026-09-15 push）
@@ -203,11 +203,40 @@ pack 長 2048〜4096 と `local_batch_size: 1` から始めて上げていく。
 
 ---
 
+## 4.2 SageMaker 上での初回ジョブ（2026-09-24、ml.g5.2xlarge = 1×A10G 24 GB）
+
+`notebooks/01_launch_training_job.ipynb` を Studio から実行。Qwen3.5-0.8B、LoRA dim 16、seq 1024、pack 2048、
+global batch 4 pack、3 エポック。**一発で完走**し、ローカル模擬検証（§2.4）と同じ経路が SageMaker 上でも動いた。
+
+| 項目 | 値 |
+|---|---|
+| ジョブ全体 | 8 分（起動〜Completed）。課金 443 秒 |
+| イメージ pull | 約 3 分（ECR 上 9.6 GB。ローカルの見積もり 5〜10 分より速い） |
+| モデル DL | 16 秒（HF Hub → 2.1 GB。SageMaker の回線は速い） |
+| packing | 見積もり 17 pack、実際 17 pack（充填率 92.9%）。1 エポック 5 ステップ、計 15 ステップ、warmup 5 |
+| 最初のステップ | 102 秒（Triton コンパイル）。最初の検証も 42 秒（eval 経路のコンパイル）。以降は 2 秒/ステップ、検証 5 秒 |
+| スループット | 約 3,900 tokens/s（A10G。RTX 3090 の 5,500 より低い） |
+| VRAM | 14.5 GiB（pack 2048 × local batch 1。ローカルの pack 1024 × batch 2 と同じトークン数で同じ値） |
+| loss | train 3.28 → 2.41、val 2.56 → 2.45 → 2.42（エポック末ごと）。`LOWEST_VAL` = `epoch_2_step_14` |
+| 成果物 | `model.tar.gz` に `model/adapter_model.safetensors`、`adapter_config.json`、`automodel_peft_config.json`、tokenizer、`config.yaml`、`effective_config.yaml`、`training.jsonl`、`validation.jsonl`、`training_info.json` |
+
+**気づき**
+
+- `/opt/ml/checkpoints` を `checkpoint_s3_uri` と同期するエージェントが、アップロード済みファイルごとに
+  `<name>.sagemaker-uploaded` というマーカーを置く。チェックポイントの `model/` をそのまま `/opt/ml/model` へコピーすると
+  このマーカーも `model.tar.gz` に入る（無害だが紛らわしい）。`train.py` のコピーで除外するようにした
+- ジョブ全体 8 分のうち学習は 3 分。短い反復ではイメージ pull（3 分）と Triton コンパイル（約 2.5 分）が半分を占めるため、
+  反復開発ではウォームプール（`keep_alive_period_in_seconds`）が効く
+- `Fetching 13 files` の停止（ローカルで見えた症状）は SageMaker では出ない。回線が速く 16 秒で終わる
+- CloudWatch のログには `httpx` の HF Hub アクセスログが大量に出る。学習ログを読むときは `step ` や `[val]` でフィルタする
+- DLC 起動時の `CUDA compat package should be installed for NVIDIA driver smaller than 580.178.04 / Current installed ... 595.91.07 / Skipping CUDA compat setup` は
+  DLC の起動スクリプトの情報表示。ホストのドライバが新しいので compat 層は不要という意味で正常
+
 ## 5. 未検証・残課題
 
 - ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
-- SageMaker 上での初回ジョブ（ml.g5.2xlarge）。toolkit の torchrun 起動、チャネル写像、`/opt/ml/model` の成果物を実機で確認する
+- ~~SageMaker 上での初回ジョブ（ml.g5.2xlarge）~~ → 2026-09-24 完了（§4.2）
+- Phase 6: 複数 GPU（`ml.g5.12xlarge`）、`checkpoint_s3_uri` からの再開、Spot 中断・再開
 - LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
-- 複数 GPU での FSDP2（ローカルは 1 GPU のため未検証。SageMaker の `ml.g5.12xlarge` で確認予定）
 - MTP の padded 経路の形状エラーを AutoModel に報告するか

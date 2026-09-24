@@ -391,7 +391,7 @@ estimator.fit({"train": f"s3://{bucket}/data/train"})
 - まず 1B クラスの小さいモデルで通し、その後ターゲットモデルへ差し替える
   （実際は `Qwen/Qwen3.5-0.8B` + 料理データで通した。`configs/sagemaker/qwen3_5_cooking_lora.yaml`）
 
-### Phase 5: Notebook の実装と単一ノード実行 — **Notebook 実装済み、初回ジョブは未実行**
+### Phase 5: Notebook の実装と単一ノード実行 — **完了（2026-09-24、ml.g5.2xlarge で完走。`docs/03` §4.2）**
 - 5.3 の構成で Notebook を作成
 - `instance_count=1` で実行 → CloudWatch にログ、S3 に成果物が出ることを確認
 - **完了条件**: `model.tar.gz` に consolidated な safetensors が入っている
