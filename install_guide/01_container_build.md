@@ -8,13 +8,13 @@
 
 ## 検証状況
 
-| 項目 | 内容 |
-| --- | --- |
-| ビルド環境 | Linux PC（Docker Engine、NVIDIA GeForce RTX 3090） |
-| 成果物 | `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（ローカル 19.7 GB、ECR 上の圧縮サイズ約 9.6 GB） |
-| ベース DLC | `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker`（torch 2.10.0、Python 3.13、CUDA 13.0） |
-| AutoModel | 0.6.0（`constraints.txt` で lock と同じバージョンに pin） |
-| 追加パッケージ | `flash-linear-attention 0.4.2`（Qwen3.5 の線形 attention 用）、`causal-conv1d 1.6.0`（nvcc でコンパイル） |
+| 項目        | 内容                                                                                                  |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| ビルド環境     | Linux PC（Docker Engine、NVIDIA GeForce RTX 3090）                                                     |
+| 成果物       | `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130`（ローカル 19.7 GB、ECR 上の圧縮サイズ約 9.6 GB）               |
+| ベース DLC   | `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker`（torch 2.10.0、Python 3.13、CUDA 13.0） |
+| AutoModel | 0.6.0（`constraints.txt` で lock と同じバージョンに pin）                                                       |
+| 追加パッケージ   | `flash-linear-attention 0.4.2`（Qwen3.5 の線形 attention 用）、`causal-conv1d 1.6.0`（nvcc でコンパイル）          |
 
 ## 前提条件
 
@@ -25,21 +25,21 @@
 
 ## `container/` ディレクトリの内容
 
-| ファイル | 役割 |
-| --- | --- |
-| `Dockerfile` | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention` + `causal-conv1d` + ビルド時検証 |
-| `constraints.txt` | AutoModel v0.6.0 の `uv.lock` に合わせた pin。torch の差し替え防止 |
-| `build_and_push.sh` | DLC アカウントへのログイン → build → ECR リポジトリ作成 → push を一括実行 |
-| `smoke_test.sh` | ビルド済みイメージの import / CLI / toolkit / `pip check` を確認（`02_local_verification.md`） |
-| `local_train_test.sh` | ローカル GPU でイメージ内から短い LoRA 学習を実行（`02_local_verification.md`） |
-| `local_sm_sim.sh` | SageMaker の `/opt/ml` 規約を再現して `train.py` を検証（`02_local_verification.md`） |
+| ファイル                  | 役割                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `Dockerfile`          | DLC + `pip install nemo-automodel==0.6.0 flash-linear-attention` + `causal-conv1d` + ビルド時検証 |
+| `constraints.txt`     | AutoModel v0.6.0 の `uv.lock` に合わせた pin。torch の差し替え防止                                        |
+| `build_and_push.sh`   | DLC アカウントへのログイン → build → ECR リポジトリ作成 → push を一括実行                                          |
+| `smoke_test.sh`       | ビルド済みイメージの import / CLI / toolkit / `pip check` を確認（`02_local_verification.md`）             |
+| `local_train_test.sh` | ローカル GPU でイメージ内から短い LoRA 学習を実行（`02_local_verification.md`）                                  |
+| `local_sm_sim.sh`     | SageMaker の `/opt/ml` 規約を再現して `train.py` を検証（`02_local_verification.md`）                    |
 
 ---
 
 ## ステップ1: リポジトリを取得する
 
 ```bash
-git clone https://github.com/makonaga/nvidia_automodel_aws_deploy.git
+git clone git@github.com:Panasonic-LAS-SoftArch/coa_semantic_knowledge_bridge.git
 cd nvidia_automodel_aws_deploy/container
 ```
 
@@ -115,7 +115,7 @@ REGION=$REGION ./build_and_push.sh
 ```
 
 ステップ4 のキャッシュが使われるので再ビルドは一瞬で終わり、push だけが走ります。  
-アップロードは圧縮後の約 9.6 GB で、所要時間は回線次第です。  
+アップロードは圧縮後の約 9.6 GB です。  
 `docker push` の出力で大半のレイヤが `Layer already exists` になるのは、ベース DLC 由来のレイヤが既に自アカウントのリポジトリにあるためで正常です。
 
 完了時に次が表示されます。この URI を Notebook が `image_uri` として使います（Notebook はアカウント ID とリージョンから自動で組み立てるため、書き写す必要はありません）。
@@ -139,20 +139,20 @@ aws ecr describe-images --repository-name nemo-automodel-sagemaker --region $REG
 
 `build_and_push.sh` は環境変数で挙動を変えられます。
 
-| 環境変数 | 既定値 | 内容 |
-| --- | --- | --- |
-| `REGION` | `us-west-2` | ECR のリージョン |
-| `REPO` | `nemo-automodel-sagemaker` | ECR リポジトリ名 |
-| `TAG` | `0.6.0-pt2.10-py313-cu130` | イメージタグ |
-| `AUTOMODEL_VERSION` | `0.6.0` | `pip install nemo-automodel==<version>` |
-| `DLC_TAG` | `2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` | ベース DLC のタグ |
+| 環境変数                | 既定値                                            | 内容                                      |
+| ------------------- | ---------------------------------------------- | --------------------------------------- |
+| `REGION`            | `us-west-2`                                    | ECR のリージョン                              |
+| `REPO`              | `nemo-automodel-sagemaker`                     | ECR リポジトリ名                              |
+| `TAG`               | `0.6.0-pt2.10-py313-cu130`                     | イメージタグ                                  |
+| `AUTOMODEL_VERSION` | `0.6.0`                                        | `pip install nemo-automodel==<version>` |
+| `DLC_TAG`           | `2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` | ベース DLC のタグ                             |
 
 `Dockerfile` の build arg で causal-conv1d の導入と CUDA アーキテクチャを変えられます。
 
-| build arg | 既定値 | 内容 |
-| --- | --- | --- |
-| `INSTALL_CAUSAL_CONV1D` | `1` | `0` で causal-conv1d を外す（packed sequence で Qwen3.5 を学習しない場合のみ） |
-| `TORCH_CUDA_ARCH_LIST` | `8.0;8.6;8.9;9.0` | A100 / RTX 30 / RTX 40 / H100。他の GPU を使う場合は追加する |
+| build arg               | 既定値               | 内容                                                            |
+| ----------------------- | ----------------- | ------------------------------------------------------------- |
+| `INSTALL_CAUSAL_CONV1D` | `1`               | `0` で causal-conv1d を外す（packed sequence で Qwen3.5 を学習しない場合のみ） |
+| `TORCH_CUDA_ARCH_LIST`  | `8.0;8.6;8.9;9.0` | A100 / RTX 30 / RTX 40 / H100。他の GPU を使う場合は追加する               |
 
 ## 再ビルドが必要になるとき
 

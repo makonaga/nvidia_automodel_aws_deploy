@@ -8,22 +8,22 @@
 
 ## 検証状況
 
-| 項目 | 内容 |
-| --- | --- |
-| 実施日 | 2026-09-24 |
-| インスタンス | `ml.g5.2xlarge`（1×A10G 24 GB） |
-| 結果 | 完走。課金 443 秒。起動とイメージ pull 4 分、モデル DL 16 秒、学習 3 分（3 エポック 15 ステップ）、成果物アップロード 30 秒 |
-| loss | train 3.28 → 2.41、val 2.56 → 2.45 → 2.42 |
+| 項目     | 内容                                                                           |
+| ------ | ---------------------------------------------------------------------------- |
+| 実施日    | 2026-09-24                                                                   |
+| インスタンス | `ml.g5.2xlarge`（1×A10G 24 GB）                                                |
+| 結果     | 処理時間443 秒。起動とイメージ pull 4 分、モデル DL 16 秒、学習 3 分（3 エポック 15 ステップ）、成果物アップロード 30 秒 |
+| loss   | train 3.28 → 2.41、val 2.56 → 2.45 → 2.42                                     |
 
 ## 前提条件
 
-| 項目 | 内容 |
-| --- | --- |
-| イメージ | `01_container_build.md` で `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130` が ECR に push 済み |
-| クォータ | Service Quotas > Amazon SageMaker > `ml.g5.2xlarge for training job usage` が 1 以上。0 なら申請する（承認に数時間〜1 日） |
-| 実行ロール | Studio のユーザープロファイルに紐づく実行ロール（Notebook 内で `sagemaker.get_execution_role()` が返すもの）。`AmazonSageMakerFullAccess` 相当があれば、自アカウント ECR からの pull、既定バケットの読み書き、CloudWatch Logs が通る |
-| ネットワーク | Training Job が Hugging Face Hub に到達できること（Estimator に VPC を指定しない）。Studio ドメインが VPC-only モードでも Training Job には影響しない |
-| Notebook 実行環境 | SageMaker Studio の JupyterLab（SageMaker Distribution イメージ、`ml.t3.medium` で十分）。`sagemaker` SDK は同梱 |
+| 項目            | 内容                                                                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| イメージ          | `01_container_build.md` で `nemo-automodel-sagemaker:0.6.0-pt2.10-py313-cu130` が ECR に push 済み                                                                          |
+| クォータ          | Service Quotas > Amazon SageMaker > `ml.g5.2xlarge for training job usage` が 1 以上。0 なら申請する（承認に数時間〜1 日）                                                                 |
+| 実行ロール         | Studio のユーザープロファイルに紐づく実行ロール（Notebook 内で `sagemaker.get_execution_role()` が返すもの）。`AmazonSageMakerFullAccess` 相当があれば、自アカウント ECR からの pull、既定バケットの読み書き、CloudWatch Logs が通る |
+| ネットワーク        | Training Job が Hugging Face Hub に到達できること（Estimator に VPC を指定しない）。Studio ドメインが VPC-only モードでも Training Job には影響しない                                                      |
+| Notebook 実行環境 | SageMaker Studio の JupyterLab（SageMaker Distribution イメージ、`ml.t3.medium` で十分）。`sagemaker` SDK は同梱                                                                      |
 
 課金はインスタンスの起動から終了までで、`ml.g5.2xlarge` は 1 時間 1.5 USD 前後です。
 
@@ -35,8 +35,11 @@
 
 1. コンソール > Amazon SageMaker AI > Studio（`us-west-2`）を開き、ユーザープロファイルで **Open Studio** を選びます
 2. 左メニューの **Applications > JupyterLab** から **Create JupyterLab space** を選びます（既存の space があればそれを使います）
+   
    - Instance: `ml.t3.medium`（Notebook 自体は軽く、GPU は不要です）
+   
    - Image: `SageMaker Distribution`（最新版）
+   
    - Storage: 既定の 5 GB で足ります（成果物の `model.tar.gz` は数十 MB）
 3. **Run space** の後に **Open JupyterLab** を選びます
 
@@ -45,8 +48,7 @@
 JupyterLab で **File > New > Terminal** を開き、次を実行します。
 
 ```bash
-cd ~
-git clone https://github.com/makonaga/nvidia_automodel_aws_deploy.git
+git git@github.com:Panasonic-LAS-SoftArch/coa_semantic_knowledge_bridge.git
 ```
 
 - `sagemaker` SDK は SageMaker Distribution に同梱されているため、追加のインストールは不要です
@@ -60,16 +62,16 @@ Estimator の `source_dir='../src'` と `dependencies=['../configs']` は Notebo
 
 Notebook のセル構成は次のとおりです。
 
-| セル | 内容 |
-| --- | --- |
-| セッション設定 | `role`、`region`、`bucket`、`image_uri` を取得する |
-| 実行構成 | `target` でインスタンスを選ぶ。GPU 数、クォータ名、`global_batch_size`、`RUN_TAG` がここから導出される |
-| 0. プリフライト確認 | ECR イメージ、クォータ、実行ロールを確認する |
-| 1. 学習データを S3 へ | `train.jsonl` と `val.jsonl` をアップロードする |
-| 2. ベースモデルの渡し方 | HF Hub の `model_id` か S3 の `model_s3` を選ぶ |
-| 3. Estimator | `hyperparameters`、`metric_definitions`、`PyTorch` Estimator を定義する |
-| 4. 実行 | `estimator.fit()` でジョブを起動し、ログを流す |
-| 5. 成果物の確認 | `model.tar.gz` を取得して展開し、学習曲線を表示する |
+| セル             | 内容                                                                       |
+| -------------- | ------------------------------------------------------------------------ |
+| セッション設定        | `role`、`region`、`bucket`、`image_uri` を取得する                               |
+| 実行構成           | `target` でインスタンスを選ぶ。GPU 数、クォータ名、`global_batch_size`、`RUN_TAG` がここから導出される |
+| 0. プリフライト確認    | ECR イメージ、クォータ、実行ロールを確認する                                                 |
+| 1. 学習データを S3 へ | `train.jsonl` と `val.jsonl` をアップロードする                                    |
+| 2. ベースモデルの渡し方  | HF Hub の `model_id` か S3 の `model_s3` を選ぶ                                |
+| 3. Estimator   | `hyperparameters`、`metric_definitions`、`PyTorch` Estimator を定義する         |
+| 4. 実行          | `estimator.fit()` でジョブを起動し、ログを流す                                         |
+| 5. 成果物の確認      | `model.tar.gz` を取得して展開し、学習曲線を表示する                                        |
 
 ## ステップ4: セッション設定セルを実行する
 
@@ -115,30 +117,30 @@ Training Job が HF Hub に到達できない環境や、S3 上の自前モデ�
 
 Estimator の要点は次のとおりです。
 
-| 引数 | 値 | 意味 |
-| --- | --- | --- |
-| `image_uri` | ECR のイメージ | `01_container_build.md` で push したもの |
-| `entry_point` / `source_dir` / `dependencies` | `train.py` / `../src` / `['../configs']` | `/opt/ml/code` に展開される |
-| `distribution` | `{'torch_distributed': {'enabled': True}}` | toolkit が GPU 数に応じた `torchrun` で起動する |
-| `checkpoint_s3_uri` | `s3://<bucket>/automodel/cooking_basics/checkpoints/<RUN_TAG>/` | `/opt/ml/checkpoints` と双方向同期。同じ prefix があると AutoModel が自動再開する |
-| `metric_definitions` | `train:loss`、`eval:loss` など | AutoModel のログ形式に合わせた正規表現。CloudWatch のメトリクスとして記録される |
-| `environment` | `HF_HOME`、`HF_TOKEN`、`NCCL_DEBUG`、`WANDB_MODE` | gated モデルを使うときだけ `HF_TOKEN` を環境変数から渡す |
+| 引数                                            | 値                                                               | 意味                                                            |
+| --------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| `image_uri`                                   | ECR のイメージ                                                       | `01_container_build.md` で push したもの                           |
+| `entry_point` / `source_dir` / `dependencies` | `train.py` / `../src` / `['../configs']`                        | `/opt/ml/code` に展開される                                         |
+| `distribution`                                | `{'torch_distributed': {'enabled': True}}`                      | toolkit が GPU 数に応じた `torchrun` で起動する                          |
+| `checkpoint_s3_uri`                           | `s3://<bucket>/automodel/cooking_basics/checkpoints/<RUN_TAG>/` | `/opt/ml/checkpoints` と双方向同期。同じ prefix があると AutoModel が自動再開する |
+| `metric_definitions`                          | `train:loss`、`eval:loss` など                                     | AutoModel のログ形式に合わせた正規表現。CloudWatch のメトリクスとして記録される            |
+| `environment`                                 | `HF_HOME`、`HF_TOKEN`、`NCCL_DEBUG`、`WANDB_MODE`                  | gated モデルを使うときだけ `HF_TOKEN` を環境変数から渡す                         |
 
 ## ステップ9: ジョブを実行し、ログを追う
 
 セル「4. 実行」で `estimator.fit(...)` を呼ぶと、ジョブが作成され、CloudWatch のログが Notebook に流れます。  
 ログの見どころを順に示します。
 
-| 段階 | 目安 | 期待するログ |
-| --- | --- | --- |
-| 起動 | 0〜2 分 | `Starting - Starting the training job...` → `Downloading - Downloading input data` |
-| イメージ pull | 3〜5 分 | `Training - Training image download completed. Training in progress.` ここまでログが止まって見えるのは正常です |
-| toolkit | 直後 | `Invoking script with the following command:` に続いて `torchrun --nnodes 1 --nproc_per_node 1 train.py --config qwen3_5_cooking_lora.yaml --final_checkpoint LOWEST_VAL ...` |
-| train.py | 直後 | `rank 0/1 \| config=... \| sagemaker=True`、`dataset ← /opt/ml/input/data/train/train.jsonl`、`model ← Qwen/Qwen3.5-0.8B (--model_id)`、`checkpoint_dir ← /opt/ml/checkpoints`、`packing 見積もり: samples=245, avg_tokens=127, pack_size=2048 → packs≈17`、`lr_warmup_steps ← 4`、`=== effective config ===` |
-| モデル DL | 1 分未満 | `Fetching 13 files` の進捗。`Warning: You are sending unauthenticated requests` は public モデルなので無視して構いません |
-| サンプル確認 | 直後 | `=== Sample Prompt 0 (rendered with chat template) ===` に `<\|im_start\|>user ... <\|im_start\|>assistant` と空の `<think>` ブロックが出る |
-| 学習 | 3〜5 分 | 最初のステップは Triton コンパイルで約 100 秒、最初の検証も約 40 秒かかります。以降は `step N \| epoch E \| loss ... \| grad_norm ... \| lr ... \| mem ... \| tps ...` が 2 秒間隔で進み、エポック末に `[val] ... loss ...` と `Saving checkpoint` が出ます |
-| 終了 | 1 分 | `最終チェックポイント: ... (LOWEST_VAL)` → `成果物を /opt/ml/model へコピーしました` → `Reporting training SUCCESS` → `Uploading - Uploading generated training model` → `Completed` |
+| 段階        | 目安    | 期待するログ                                                                                                                                                                                                                                                                                              |
+| --------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 起動        | 0〜2 分 | `Starting - Starting the training job...` → `Downloading - Downloading input data`                                                                                                                                                                                                                  |
+| イメージ pull | 3〜5 分 | `Training - Training image download completed. Training in progress.` ここまでログが止まって見えるのは正常です                                                                                                                                                                                                          |
+| toolkit   | 直後    | `Invoking script with the following command:` に続いて `torchrun --nnodes 1 --nproc_per_node 1 train.py --config qwen3_5_cooking_lora.yaml --final_checkpoint LOWEST_VAL ...`                                                                                                                           |
+| train.py  | 直後    | `rank 0/1 \| config=... \| sagemaker=True`、`dataset ← /opt/ml/input/data/train/train.jsonl`、`model ← Qwen/Qwen3.5-0.8B (--model_id)`、`checkpoint_dir ← /opt/ml/checkpoints`、`packing 見積もり: samples=245, avg_tokens=127, pack_size=2048 → packs≈17`、`lr_warmup_steps ← 4`、`=== effective config ===` |
+| モデル DL    | 1 分未満 | `Fetching 13 files` の進捗。`Warning: You are sending unauthenticated requests` は public モデルなので無視して構いません                                                                                                                                                                                                |
+| サンプル確認    | 直後    | `=== Sample Prompt 0 (rendered with chat template) ===` に `<\|im_start\|>user ... <\|im_start\|>assistant` と空の `<think>` ブロックが出る                                                                                                                                                                    |
+| 学習        | 3〜5 分 | 最初のステップは Triton コンパイルで約 100 秒、最初の検証も約 40 秒かかります。以降は `step N \| epoch E \| loss ... \| grad_norm ... \| lr ... \| mem ... \| tps ...` が 2 秒間隔で進み、エポック末に `[val] ... loss ...` と `Saving checkpoint` が出ます                                                                                              |
+| 終了        | 1 分   | `最終チェックポイント: ... (LOWEST_VAL)` → `成果物を /opt/ml/model へコピーしました` → `Reporting training SUCCESS` → `Uploading - Uploading generated training model` → `Completed`                                                                                                                                      |
 
 `[ERROR] ... is part of ...'s signature, but not documented` という行が複数出ますが、transformers の docstring チェックの表示で無害です（`06_troubleshooting.md` 問題13）。  
 CloudWatch には `httpx` の HF Hub アクセスログも大量に出るため、学習ログを読むときは `step ` や `[val]` でフィルタすると見やすくなります。

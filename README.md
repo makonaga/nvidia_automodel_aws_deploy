@@ -1,7 +1,7 @@
 # NeMo AutoModel on Amazon SageMaker
 
 このリポジトリは、NVIDIA の LLM 学習ライブラリ NeMo AutoModel を Amazon SageMaker Training Job 上で実行するためのガイドとコード一式を提供します。  
-AWS Deep Learning Container に AutoModel を載せたカスタムコンテナ、SageMaker の規約と AutoModel の設定を橋渡しする学習スクリプト、ジョブを起動する Notebook、動作確認用のサンプルデータで構成されます。
+AWS Deep Learning Container に AutoModel を載せたカスタムコンテナ、SageMaker に AutoModel の設定を橋渡しする学習スクリプト、ジョブを起動する Notebook、動作確認用のサンプルデータで構成されます。
 
 ## プロジェクト概要
 
@@ -28,7 +28,9 @@ AutoModel は外部の `torchrun` から起動されたことを検出してそ�
 学習は FSDP2 による単一ノード多 GPU で行い、LoRA アダプタを HF PEFT 形式で出力します。  
 チェックポイントは `/opt/ml/checkpoints` と S3 の間で双方向に同期され、Spot 中断からの再開や、同じ prefix での続きの学習に使えます。
 
-コンテナは AWS Deep Learning Container `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` をベースに、AutoModel 0.6.0 と Qwen3.5 に必要なカーネル（`flash-linear-attention`、`causal-conv1d`）を追加したものです。  
+コンテナは AWS Deep Learning Container `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` をベースに、AutoModel 0.6.0 と Qwen3.5 に必要なカーネル（`flash-linear-attention`、`causal-conv1d`）を追加したものです。
+※他のモデルへの対応は順次対応予定です。  
+
 `train.py` と設定 YAML はジョブごとに `source_dir` としてアップロードされるため、設定の変更でコンテナを再ビルドする必要はありません。
 
 ## 前提条件
@@ -36,6 +38,7 @@ AutoModel は外部の `torchrun` から起動されたことを検出してそ�
 このプロジェクトを実施する前に、以下の前提条件を満たしていることを確認してください。
 
 必要なツールとして  
+
 - Docker Desktop または Docker Engine（空きディスク 60 GB 以上）
 - AWS CLI v2 が設定済みであること
 - 任意: NVIDIA GPU（ローカル検証用。24 GB 以上を推奨）  
@@ -43,6 +46,7 @@ AutoModel は外部の `torchrun` から起動されたことを検出してそ�
 が必要です。
 
 AWS 環境の要件として  
+
 - `us-west-2` で SageMaker Studio、ECR、S3、CloudWatch Logs を使える権限があること
 - SageMaker 実行ロール（`AmazonSageMakerFullAccess` 相当）があること
 - 対象インスタンスの Service Quotas（`ml.g5.2xlarge for training job usage` など）が 1 以上であること
@@ -51,6 +55,7 @@ AWS 環境の要件として
 が必要です。
 
 必要な知識として  
+
 - SageMaker Training Job の基本（Estimator、入力チャネル、`model.tar.gz`）
 - Docker の基本操作
 - Hugging Face のモデルとチャットテンプレートの概念  
@@ -78,16 +83,16 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 
 **install_guide** ディレクトリには、詳細な手順書が含まれています。
 
-| ファイル | 内容 |
-| --- | --- |
-| `00_overview.md` | 全体像、アーキテクチャと役割分担、スコープ、主要な設計判断 |
-| `01_container_build.md` | コンテナイメージの作成と ECR への push |
-| `02_local_verification.md` | ローカル GPU でのスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行 |
-| `03_training_job.md` | SageMaker Studio からの Training Job 実行 |
-| `04_scale_and_operations.md` | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え |
-| `05_configuration.md` | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物 |
-| `06_troubleshooting.md` | トラブルシューティング |
-| `reference/` | 設計判断の根拠、Composer 版からの移行設計、DLC の選定、検証記録、AutoModel 設定 YAML のパラメータ一覧 |
+| ファイル                         | 内容                                                                |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `00_overview.md`             | 全体像、アーキテクチャと役割分担、スコープ、主要な設計判断                                     |
+| `01_container_build.md`      | コンテナイメージの作成と ECR への push                                          |
+| `02_local_verification.md`   | ローカル GPU でのスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行                   |
+| `03_training_job.md`         | SageMaker Studio からの Training Job 実行                              |
+| `04_scale_and_operations.md` | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え                                 |
+| `05_configuration.md`        | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物                           |
+| `06_troubleshooting.md`      | トラブルシューティング                                                       |
+| `reference/`                 | 設計判断の根拠、Composer 版からの移行設計、DLC の選定、検証記録、AutoModel 設定 YAML のパラメータ一覧 |
 
 **container** ディレクトリには、コンテナイメージの定義とスクリプトが含まれています。`Dockerfile`、依存の pin（`constraints.txt`）、ビルドと push を行う `build_and_push.sh`、ローカル検証用の `smoke_test.sh`、`local_train_test.sh`、`local_sm_sim.sh` です。
 
@@ -157,10 +162,6 @@ AutoModel 設定 YAML リファレンス（install_guide/reference/05_automodel_
 
 検証記録（install_guide/reference/04_verification_log.md）では、構築中に発生した問題とその原因、判断の経緯（依存衝突、MTP の形状エラー、チェックポイントの自動再開など）と、ローカル GPU、`ml.g5.2xlarge`、`ml.p4d.24xlarge` での実測値（スループット、VRAM、所要時間、loss）を記録しています。
 
-## サポートとコントリビューション
-
-改善提案や新しい機能の追加については、プルリクエストを歓迎します。特に以下のような貢献を歓迎します。他のモデル（Llama、Qwen3 など）や他のリージョンでの動作確認と手順の追加、LoRA と MTP ヘッドをマージして配信用チェックポイントを作るツール、マルチノードへの拡張、ドキュメントの改善や誤字の修正などです。
-
 ## ライセンスと参照
 
 このプロジェクトのコードは、NVIDIA NeMo AutoModel（Apache License 2.0）と AWS Deep Learning Containers を利用しています。それぞれのライセンスに従ってください。
@@ -171,7 +172,7 @@ AutoModel 設定 YAML リファレンス（install_guide/reference/05_automodel_
 
 このリポジトリのバージョン履歴を記録します。
 
-### バージョン1.0.0（初回リリース）
+### バージョン1.0.0（2026-09-25）
 
 **主な内容:**
 

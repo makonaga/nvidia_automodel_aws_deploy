@@ -8,20 +8,20 @@
 
 ## このリポジトリのガイド構成
 
-| ファイル | 内容 |
-| --- | --- |
-| `00_overview.md` | 全体像とガイドの選び方（この文書） |
-| `01_container_build.md` | コンテナイメージの作成と ECR への push |
-| `02_local_verification.md` | ローカル GPU でのイメージと学習スクリプトの検証 |
-| `03_training_job.md` | SageMaker Studio からの Training Job 実行 |
-| `04_scale_and_operations.md` | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え |
-| `05_configuration.md` | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物の仕様 |
-| `06_troubleshooting.md` | トラブルシューティング |
-| `reference/01_design_rationale.md` | 設計判断の根拠（AutoModel の起動方式、コンテナ方針の比較、落とし穴） |
-| `reference/02_composer_migration.md` | MosaicML Composer 版 SFT からの移行設計と設定マッピング |
-| `reference/03_dlc_selection.md` | ベース DLC イメージの選定 |
-| `reference/04_verification_log.md` | 構築中に判明した問題・原因・判断と、実測値の記録 |
-| `reference/05_automodel_yaml_reference.md` | AutoModel 0.6.0 の設定 YAML パラメータ一覧 |
+| ファイル                                       | 内容                                         |
+| ------------------------------------------ | ------------------------------------------ |
+| `00_overview.md`                           | 全体像とガイドの選び方（この文書）                          |
+| `01_container_build.md`                    | コンテナイメージの作成と ECR への push                   |
+| `02_local_verification.md`                 | ローカル GPU でのイメージと学習スクリプトの検証                 |
+| `03_training_job.md`                       | SageMaker Studio からの Training Job 実行       |
+| `04_scale_and_operations.md`               | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え          |
+| `05_configuration.md`                      | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物の仕様 |
+| `06_troubleshooting.md`                    | トラブルシューティング                                |
+| `reference/01_design_rationale.md`         | 設計判断の根拠（AutoModel の起動方式、コンテナ方針の比較、落とし穴）    |
+| `reference/02_composer_migration.md`       | MosaicML Composer 版 SFT からの移行設計と設定マッピング    |
+| `reference/03_dlc_selection.md`            | ベース DLC イメージの選定                            |
+| `reference/04_verification_log.md`         | 構築中に判明した問題・原因・判断と、実測値の記録                   |
+| `reference/05_automodel_yaml_reference.md` | AutoModel 0.6.0 の設定 YAML パラメータ一覧           |
 
 ## NeMo AutoModel とは
 
@@ -83,11 +83,11 @@ Training Job の中では、3 つの層が次のように役割を分担しま�
            最終成果物     → /opt/ml/model（rank 0 が train.py でコピー → model.tar.gz として S3 へ）
 ```
 
-| 層 | 誰が提供するか | 役割 |
-| --- | --- | --- |
-| sagemaker-training toolkit | AWS Deep Learning Container に同梱 | `hyperparameters` をコマンドライン引数に変換し、GPU 数に応じた `torchrun` でユーザースクリプトを起動する |
-| `train.py` | このリポジトリ | SageMaker の規約（チャネルのパス、`/opt/ml/checkpoints`、`/opt/ml/model`、`WORLD_SIZE`）を AutoModel の設定に写像する薄いアダプタ。学習ループは持たない |
-| AutoModel | `pip install nemo-automodel` | YAML とレシピに従って学習を実行する |
+| 層                          | 誰が提供するか                         | 役割                                                                                                             |
+| -------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| sagemaker-training toolkit | AWS Deep Learning Container に同梱 | `hyperparameters` をコマンドライン引数に変換し、GPU 数に応じた `torchrun` でユーザースクリプトを起動する                                          |
+| `train.py`                 | このリポジトリ                         | SageMaker の規約（チャネルのパス、`/opt/ml/checkpoints`、`/opt/ml/model`、`WORLD_SIZE`）を AutoModel の設定に写像する薄いアダプタ。学習ループは持たない |
+| AutoModel                  | `pip install nemo-automodel`    | YAML とレシピに従って学習を実行する                                                                                           |
 
 `train.py` と `configs/` は `source_dir` としてジョブごとにアップロードされるため、設定やスクリプトを変えてもコンテナの再ビルドは不要です。  
 再ビルドが必要になるのは、AutoModel のバージョンや依存パッケージを変えるときだけです。
@@ -96,15 +96,15 @@ Training Job の中では、3 つの層が次のように役割を分担しま�
 
 このプロジェクトは次のスコープで設計し、検証しています。
 
-| 項目 | 内容 |
-| --- | --- |
-| モデル規模 | 7B〜13B 級の dense モデル（検証は `Qwen/Qwen3.5-0.8B` で実施） |
-| 学習の種類 | LoRA / PEFT による SFT |
-| 分散 | 単一ノード、多 GPU（FSDP2）。マルチノードと EFA は対象外 |
-| データ | S3 の入力チャネル経由の JSONL |
-| ベース DLC | `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` |
-| AutoModel | 0.6.0 |
-| 検証済みインスタンス | `ml.g5.2xlarge`（1 GPU）、`ml.p4d.24xlarge`（8 GPU） |
+| 項目         | 内容                                                              |
+| ---------- | --------------------------------------------------------------- |
+| モデル規模      | 7B〜13B 級の dense モデル（検証は `Qwen/Qwen3.5-0.8B` で実施）                |
+| 学習の種類      | LoRA / PEFT による SFT                                             |
+| 分散         | 単一ノード、多 GPU（FSDP2）。マルチノードと EFA は対象外                             |
+| データ        | S3 の入力チャネル経由の JSONL                                             |
+| ベース DLC    | `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` |
+| AutoModel  | 0.6.0                                                           |
+| 検証済みインスタンス | `ml.g5.2xlarge`（1 GPU）、`ml.p4d.24xlarge`（8 GPU）                 |
 
 ## 主要な設計判断
 
@@ -128,12 +128,12 @@ AutoModel は同じディレクトリに前回のチェックポイントがあ�
 
 構築は次の順に進めます。所要時間はローカル PC の回線と GPU の有無で変わります。
 
-| 順 | ガイド | 内容 | 目安 |
-| --- | --- | --- | --- |
-| 1 | `01_container_build.md` | ローカル PC で DLC を pull し、AutoModel を載せたイメージをビルドして ECR へ push する | DLC の pull と push は回線次第。ビルドは causal-conv1d のコンパイルを含めて 15 分前後（実測） |
-| 2 | `02_local_verification.md` | ローカル GPU でスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行を行う。GPU が無ければスモークテストのみ | 学習テストは 1 回 5 分前後（実測。初回はモデルの DL が加わる） |
-| 3 | `03_training_job.md` | SageMaker Studio の Notebook から `ml.g5.2xlarge` で最初の Training Job を実行する | ジョブは 8 分（実測） |
-| 4 | `04_scale_and_operations.md` | 8 GPU、再開、Spot を確認し、本番モデルに差し替える | 8 GPU のジョブは 14 分（実測。確保待ちを含む）。再開・Spot・本番差し替えは未実施 |
+| 順   | ガイド                          | 内容                                                                     | 目安                                                               |
+| --- | ---------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | `01_container_build.md`      | ローカル PC で DLC を pull し、AutoModel を載せたイメージをビルドして ECR へ push する          | DLC の pull と push は回線次第。ビルドは causal-conv1d のコンパイルを含めて 15 分前後（実測） |
+| 2   | `02_local_verification.md`   | ローカル GPU でスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行を行う。GPU が無ければスモークテストのみ   | 学習テストは 1 回 5 分前後（実測。初回はモデルの DL が加わる）                             |
+| 3   | `03_training_job.md`         | SageMaker Studio の Notebook から `ml.g5.2xlarge` で最初の Training Job を実行する | ジョブは 8 分（実測）                                                     |
+| 4   | `04_scale_and_operations.md` | 8 GPU、再開、Spot を確認し、本番モデルに差し替える                                         | 8 GPU のジョブは 14 分（実測。確保待ちを含む）。再開・Spot・本番差し替えは未実施                  |
 
 設定の意味やデータ形式を確認したいときは `05_configuration.md`、問題が起きたときは `06_troubleshooting.md` を参照してください。
 

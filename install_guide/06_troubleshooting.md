@@ -97,25 +97,9 @@ AutoModel の依存とベース DLC のパッケージに新しい衝突が生�
 
 ---
 
-### 問題6: Apple Silicon Mac でビルドが極端に遅い
-
-**症状**
-
-`pip install` や causal-conv1d のコンパイルが数時間かかります。
-
-**考えられる原因**
-
-`--platform linux/amd64` によるエミュレーションで動いています。
-
-**解決方法**
-
-`pip install` は数分〜十数分で終わるはずなので待ちます。どうしても遅い場合は x86 の EC2 でビルドしてください。本プロジェクトでは Apple Silicon でのビルドは未検証です。
-
----
-
 ## ローカル検証
 
-### 問題7: `Fetching 13 files: 92%` で長く止まる
+### 問題6: `Fetching 13 files: 92%` で長く止まる
 
 **症状**
 
@@ -131,7 +115,7 @@ AutoModel の依存とベース DLC のパッケージに新しい衝突が生�
 
 ---
 
-### 問題8: MTP の形状エラーで学習が止まる
+### 問題7: MTP の形状エラーで学習が止まる
 
 **症状**
 
@@ -153,7 +137,7 @@ MTP を使わない場合は `model.num_nextn_predict_layers: 0` でも回避で
 
 ---
 
-### 問題9: `The fast path is not available ... flash-linear-attention` の警告が出る
+### 問題8: `The fast path is not available ... flash-linear-attention` の警告が出る
 
 **症状**
 
@@ -169,7 +153,7 @@ Qwen3.5 のモデルロード時に fast path が使えないという警告が�
 
 ---
 
-### 問題10: `Checkpoint key mismatch` または `TypeError: cannot pickle code objects` で止まる
+### 問題9: `Checkpoint key mismatch` または `TypeError: cannot pickle code objects` で止まる
 
 **症状**
 
@@ -186,7 +170,7 @@ SageMaker では `RUN_TAG` を変えて `checkpoint_s3_uri` の prefix を分け
 
 ---
 
-### 問題11: `rm: cannot remove 'out/...': Permission denied`
+### 問題10: `rm: cannot remove 'out/...': Permission denied`
 
 **症状**
 
@@ -206,7 +190,7 @@ docker run --rm -v "$PWD/out:/out" nemo-automodel-sagemaker:0.6.0-pt2.10-py313-c
 
 ---
 
-### 問題12: packed 構成で `max_steps` より早く終了する
+### 問題11: packed 構成で `max_steps` より早く終了する
 
 **症状**
 
@@ -224,7 +208,7 @@ docker run --rm -v "$PWD/out:/out" nemo-automodel-sagemaker:0.6.0-pt2.10-py313-c
 
 ## ログに出る無害なメッセージ
 
-### 問題13: `[ERROR] `loss` is part of ...'s signature, but not documented` が大量に出る
+### 問題12: `[ERROR] `loss` is part of ...'s signature, but not documented` が大量に出る
 
 **症状**
 
@@ -240,28 +224,28 @@ transformers 5 系の `@auto_docstring` デコレータが、モデルクラス�
 
 ---
 
-### 問題14: その他の警告
+### 問題13: その他の警告
 
-| メッセージ | 正体 |
-| --- | --- |
-| `grouped_gemm is not available` | MoE 用カーネル。dense モデルには無関係 |
-| `Skipping import of cpp extensions ... torchao` | torchao の C++ 拡張が torch 2.10 用に無い。FP8 を使わない限り無関係 |
-| `torch_dtype is deprecated! Use dtype instead!` | transformers 5 系の警告 |
-| `[Gloo] Rank N is connected to M peer ranks` | 分散初期化のログ。8 GPU では行が混ざって出ることがある |
-| `Warning: You are sending unauthenticated requests to the HF Hub` | `HF_TOKEN` 未設定。public モデルなら不要 |
-| `rope_fusion is temporarily force-disabled globally` | AutoModel 側の既知事項 |
-| `Model parameters are DTensors (FSDP2) — skipping fp32 parameter restoration ...` | `rms_norm: torch_fp32` の重みを fp32 に戻す処理が FSDP2 ではスキップされる。RMSNorm の計算自体は fp32 で行われるため実害なし。1 GPU では出ない |
-| `barrier(): using the device under current context` | チェックポイント保存時の torch の注意。無害 |
-| `CUDA compat package should be installed for NVIDIA driver smaller than ... Skipping CUDA compat setup` | DLC の起動スクリプトの情報表示。ホストのドライバが新しいので compat 層は不要という意味 |
-| `Setting OMP_NUM_THREADS environment variable for each process to be 1` | torchrun の既定動作 |
+| メッセージ                                                                                                   | 正体                                                                                                  |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `grouped_gemm is not available`                                                                         | MoE 用カーネル。dense モデルには無関係                                                                            |
+| `Skipping import of cpp extensions ... torchao`                                                         | torchao の C++ 拡張が torch 2.10 用に無い。FP8 を使わない限り無関係                                                    |
+| `torch_dtype is deprecated! Use dtype instead!`                                                         | transformers 5 系の警告                                                                                 |
+| `[Gloo] Rank N is connected to M peer ranks`                                                            | 分散初期化のログ。8 GPU では行が混ざって出ることがある                                                                      |
+| `Warning: You are sending unauthenticated requests to the HF Hub`                                       | `HF_TOKEN` 未設定。public モデルなら不要                                                                       |
+| `rope_fusion is temporarily force-disabled globally`                                                    | AutoModel 側の既知事項                                                                                    |
+| `Model parameters are DTensors (FSDP2) — skipping fp32 parameter restoration ...`                       | `rms_norm: torch_fp32` の重みを fp32 に戻す処理が FSDP2 ではスキップされる。RMSNorm の計算自体は fp32 で行われるため実害なし。1 GPU では出ない |
+| `barrier(): using the device under current context`                                                     | チェックポイント保存時の torch の注意。無害                                                                           |
+| `CUDA compat package should be installed for NVIDIA driver smaller than ... Skipping CUDA compat setup` | DLC の起動スクリプトの情報表示。ホストのドライバが新しいので compat 層は不要という意味                                                   |
+| `Setting OMP_NUM_THREADS environment variable for each process to be 1`                                 | torchrun の既定動作                                                                                      |
 
 ---
 
 ## SageMaker Training Job
 
-問題15〜21 は本プロジェクトでは発生しておらず、SageMaker の一般的な失敗パターンとして対処を記載しています。問題22 は実際に観測したものです。
+問題14〜20 は本プロジェクトでは発生しておらず、SageMaker の一般的な失敗パターンとして対処を記載しています。問題21 は実際に観測したものです。
 
-### 問題15: `ResourceLimitExceeded` でジョブが作成できない
+### 問題14: `ResourceLimitExceeded` でジョブが作成できない
 
 **症状**
 
@@ -277,7 +261,7 @@ transformers 5 系の `@auto_docstring` デコレータが、モデルクラス�
 
 ---
 
-### 問題16: プリフライト確認で `AccessDeniedException ... servicequotas:ListServiceQuotas`
+### 問題15: プリフライト確認で `AccessDeniedException ... servicequotas:ListServiceQuotas`
 
 **症状**
 
@@ -293,7 +277,7 @@ Studio の実行ロールに Service Quotas の参照権限がありません。
 
 ---
 
-### 問題17: `CannotPullContainerError` または `no basic auth credentials` でジョブが失敗する
+### 問題16: `CannotPullContainerError` または `no basic auth credentials` でジョブが失敗する
 
 **症状**
 
@@ -310,7 +294,7 @@ Studio の実行ロールに Service Quotas の参照権限がありません。
 
 ---
 
-### 問題18: S3 の `AccessDenied` でジョブが失敗する
+### 問題17: S3 の `AccessDenied` でジョブが失敗する
 
 **症状**
 
@@ -326,7 +310,7 @@ Studio の実行ロールに Service Quotas の参照権限がありません。
 
 ---
 
-### 問題19: `Fetching 13 files` で `Connection error` や `Max retries` が出る
+### 問題18: `Fetching 13 files` で `Connection error` や `Max retries` が出る
 
 **症状**
 
@@ -342,7 +326,7 @@ Estimator の VPC 設定を外すか、ベースモデルを S3 に置いて `mo
 
 ---
 
-### 問題20: `torch.OutOfMemoryError`
+### 問題19: `torch.OutOfMemoryError`
 
 **症状**
 
@@ -358,7 +342,7 @@ Estimator の VPC 設定を外すか、ベースモデルを S3 に置いて `mo
 
 ---
 
-### 問題21: ログが `Training in progress` のまま進まない
+### 問題20: ログが `Training in progress` のまま進まない
 
 **症状**
 
@@ -374,7 +358,7 @@ Estimator の VPC 設定を外すか、ベースモデルを S3 に置いて `mo
 
 ---
 
-### 問題22: `waiting for capacity` が長い
+### 問題21: `waiting for capacity` が長い
 
 **症状**
 

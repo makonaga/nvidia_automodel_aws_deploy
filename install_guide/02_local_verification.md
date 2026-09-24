@@ -9,12 +9,12 @@ SageMaker にジョブを投げる前にここで通しておくと、コンテ�
 
 ## 検証状況
 
-| 項目 | 内容 |
-| --- | --- |
-| 検証環境 | NVIDIA GeForce RTX 3090 24 GB、Docker Engine、Linux |
-| モデル | `Qwen/Qwen3.5-0.8B`（HF Hub から取得、約 1.6 GB） |
-| データ | `data/cooking_basics/`（学習 245 件、検証 61 件） |
-| 結果 | ステップ1〜3 すべて完走。実測値は `reference/04_verification_log.md` 4 章 |
+| 項目   | 内容                                                        |
+| ---- | --------------------------------------------------------- |
+| 検証環境 | NVIDIA GeForce RTX 3090 24 GB、Docker Engine、Linux         |
+| モデル  | `Qwen/Qwen3.5-0.8B`（HF Hub から取得、約 1.6 GB）                 |
+| データ  | `data/cooking_basics/`（学習 245 件、検証 61 件）                  |
+| 結果   | ステップ1〜3 すべて完走。実測値は `reference/04_verification_log.md` 4 章 |
 
 ## 前提条件
 
@@ -59,11 +59,11 @@ GPU の無い PC では `cuda available: False` と表示されますが、そ�
 
 オプションは環境変数で指定します。
 
-| 環境変数 | 既定値 | 内容 |
-| --- | --- | --- |
-| `MODEL_ID` | `Qwen/Qwen3.5-0.8B` | 別のモデルで試す |
-| `NPROC` | `1` | GPU が複数あれば増やす |
-| `CLEAN` | `1` | `0` で前回のチェックポイントを残す（再開テスト） |
+| 環境変数       | 既定値                 | 内容                         |
+| ---------- | ------------------- | -------------------------- |
+| `MODEL_ID` | `Qwen/Qwen3.5-0.8B` | 別のモデルで試す                   |
+| `NPROC`    | `1`                 | GPU が複数あれば増やす              |
+| `CLEAN`    | `1`                 | `0` で前回のチェックポイントを残す（再開テスト） |
 
 最後に `step N | epoch E | loss ...` の行と `out/local_test/checkpoints/` の一覧が表示されれば成功です。  
 最初のステップは flash-linear-attention の Triton カーネルのコンパイルで 1〜2 分かかり、以降は 1 秒未満です。
@@ -89,10 +89,10 @@ SageMaker の toolkit が行う起動形と同じで、`train.py` のパス写�
 
 オプションは環境変数で指定します。
 
-| 環境変数 | 既定値 | 内容 |
-| --- | --- | --- |
-| `NPROC` | `1` | GPU が複数あれば増やす |
-| `MODEL_TAR` | なし | `model.tar.gz` のパスを指定すると `model` チャネル（tar.gz の展開経路）も検証する |
+| 環境変数        | 既定値 | 内容                                                       |
+| ----------- | --- | -------------------------------------------------------- |
+| `NPROC`     | `1` | GPU が複数あれば増やす                                            |
+| `MODEL_TAR` | なし  | `model.tar.gz` のパスを指定すると `model` チャネル（tar.gz の展開経路）も検証する |
 
 引数はそのまま `train.py` に渡されます。たとえば `./local_sm_sim.sh --rslora_alpha 256` で rsLoRA の alpha 換算を試せます。
 
