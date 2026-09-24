@@ -59,7 +59,12 @@ Estimator の `source_dir='../src'` / `dependencies=['../configs']` は Notebook
 - `bucket` は既定の `sagemaker-us-west-2-290918126236`。既存のデータバケットを使う場合はここで書き換える（実行ロールがそのバケットを読み書きできること）
 - Studio では `role` は自動取得される。`SAGEMAKER_ROLE` の設定は不要
 
-## Step 5: セル「0. プリフライト確認」を実行
+## Step 5: セル「実行構成」と「0. プリフライト確認」を実行
+
+「実行構成」セルは `target = 'cheap'` のまま実行します。`ml.g5.2xlarge x1 | world_size=1 | local_batch=1 | global_batch=1 pack` と
+`RUN_TAG qwen35-0.8b-lora-mtp-cheap-v1` が表示されます。以降のセル（クォータ名、バッチサイズ、チェックポイント prefix）はここに連動します。
+
+続けてプリフライトを実行:
 
 - `ECR image : 0.6.0-pt2.10-py313-cu130 9.6 GB (compressed)` と出れば ECR 側は OK
 - `quota : ml.g5.2xlarge for training job usage = 1.0` 以上であること。`0.0` なら
@@ -80,8 +85,8 @@ S3 URI が 2 行表示されます。
 
 ## Step 8: セル「3. Estimator」を実行
 
-`target = 'cheap'` のまま実行します。エラーが出なければ Estimator が作られるだけで、まだジョブは始まりません。
-`hyperparameters` は初回は変更不要です（3 エポック、global batch 4 pack、local batch 1、lr 1e-4、`LOWEST_VAL` を出力）。
+そのまま実行します。エラーが出なければ Estimator が作られるだけで、まだジョブは始まりません。
+`hyperparameters` は初回は変更不要です（3 エポック、lr 1e-4、`LOWEST_VAL` を出力。バッチは実行構成セルの導出値）。
 
 ## Step 9: セル「4. 実行」を実行し、ログを追う
 
@@ -124,14 +129,10 @@ aws s3 ls s3://sagemaker-us-west-2-290918126236/automodel/cooking_basics/checkpo
 
 ## 次: 8 GPU（ml.p4d.24xlarge）での確認
 
-初回ジョブが通ったら、同じ Notebook で次の 3 点だけ変えて再実行します。
-
-| 変更箇所 | 値 | 理由 |
-|---|---|---|
-| クォータ | `ml.p4d.24xlarge for training job usage` ≥ 1 | Service Quotas で事前確認 |
-| `target` | `'p4d'` | 8×A100 40GB |
-| `RUN_TAG` | 例 `'qwen35-0.8b-lora-mtp-p4d-v1'` | 前回の prefix には 3 エポック完了済みのチェックポイントがあり、同じ prefix だと自動再開して即終了する |
-| `step_scheduler.global_batch_size` | `8` | local 1 × 8 GPU の倍数 |
+初回ジョブが通ったら、「実行構成」セルの `target` を `'p4d'` に変えて、セル 1 から「4. 実行」まで順に再実行するだけです。
+GPU 数（8）、クォータ名（`ml.p4d.24xlarge for training job usage`）、`global_batch_size`（local 1 × 8 GPU = 8 pack）、
+`RUN_TAG`（`qwen35-0.8b-lora-mtp-p4d-v1`。前回の prefix から自動再開しないよう target を含む）がすべて連動します。
+事前に Service Quotas で `ml.p4d.24xlarge for training job usage` が 1 以上であることを確認してください。
 
 ログで確認すること: `torchrun --nnodes 1 --nproc_per_node 8`、`rank 0/8`〜`rank 7/8`（`sm_train` の行は各 rank が出す）、
 `World size: 8`、`nemo_automodel.components.distributed.fsdp2` が「skipping parallelization」ではなくシャーディングしていること、
