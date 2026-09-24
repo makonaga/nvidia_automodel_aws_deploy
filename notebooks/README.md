@@ -141,6 +141,38 @@ GPU 数（8）、クォータ名（`ml.p4d.24xlarge for training job usage`）�
 
 実測（2026-09-24）: 確保待ち 6 分 + 準備 3.5 分、学習 3 分、課金 289 秒で完走。詳細は `docs/03_phase2_findings.md` §4.3。
 
+## 次: チェックポイントからの再開（Phase 6-2）
+
+`checkpoint_s3_uri`（`RUN_TAG` の prefix）に残ったチェックポイントから AutoModel が自動再開することを確認します。
+費用を抑えるため `target = 'cheap'` で行います（`grad_accum = 4` にすると初回の cheap と同じ global batch 4 になる）。
+
+1. 1 回目: 「実行構成」セルを `target = 'cheap'`、`grad_accum = 4` にして、そのまま 3 エポック実行（`RUN_TAG = qwen35-0.8b-lora-mtp-cheap-v1` に `epoch_2_step_14` まで溜まる）
+2. 2 回目: 「3. Estimator」セルの `'step_scheduler.num_epochs'` を `5` に変えて、同じ `RUN_TAG` のまま再実行
+
+2 回目のログで確認すること: 学習開始前に `Loading checkpoint from /opt/ml/checkpoints/epoch_2_step_14` が出ること、
+最初の `step` 行が `step 15 | epoch 3` から始まること、`training.jsonl` に 1 回目のステップも含まれていること。
+同じ prefix に別構成のチェックポイントがあると `Checkpoint key mismatch` / `TypeError: cannot pickle code objects` になる（`docs/03` §2.2c）。
+
+## 次: Spot での中断・再開（Phase 6-3）
+
+「3. Estimator」の `PyTorch(...)` に次を追加します。Spot 用クォータは `ml.g5.2xlarge for spot training job usage`（初回確認時は 1）。
+
+```python
+    use_spot_instances=True,
+    max_wait=2*3600,        # max_run 以上。Spot 待ち + 実行の上限
+```
+
+確認すること: ジョブ詳細の `Managed spot training savings` が表示されること。中断が起きた場合は
+`Training - Training job interrupted` → 再起動後に `Loading checkpoint from ...` が出て途中から続くこと。
+中断が起きなければ再開経路は Phase 6-2 で確認済みなので、Spot で完走すること自体を確認できれば十分。
+
+## 次: 本番モデルへの差し替え
+
+- `model_id` を変える（HF Hub）か、S3 上の非圧縮ディレクトリ / `model.tar.gz` を `model_s3` に指定する
+- `peft.dim` / `rslora_alpha` を既存の Composer 設定に合わせる（`rslora_alpha` を渡すと `train.py` が `peft.alpha = rslora_alpha × sqrt(dim)` に換算する。`docs/01` 5.4）
+- `target = 'prod'`（ml.p4de.24xlarge、local batch 2）。7B 級では `packed_sequence_size` 4096、`dataset.seq_length` 2048 あたりから始める
+- `RUN_TAG` はモデルごとに変える
+
 ## 失敗したときに共有するもの
 
 1. Notebook に流れたログの、`Invoking script with the following command:` から最後のエラーまで
