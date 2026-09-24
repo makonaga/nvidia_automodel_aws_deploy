@@ -64,8 +64,10 @@ Estimator の `source_dir='../src'` / `dependencies=['../configs']` は Notebook
 - `ECR image : 0.6.0-pt2.10-py313-cu130 9.6 GB (compressed)` と出れば ECR 側は OK
 - `quota : ml.g5.2xlarge for training job usage = 1.0` 以上であること。`0.0` なら
   コンソールの Service Quotas から引き上げ申請し、承認まで待つ（このステップ以降は進めない）
-- `ecr:DescribeImages` や `servicequotas:ListServiceQuotas` で `AccessDenied` が出る場合は
-  Notebook 側の認証情報の権限不足。ジョブ自体には影響しないので、コンソールで目視確認して次へ進んでよい
+- Studio の実行ロール（`AmazonSageMaker-ExecutionRole-*`）には通常 `servicequotas:ListServiceQuotas` が無く、
+  `quota : 参照権限なし (AccessDeniedException)` と表示される。ジョブ自体には影響しないので、コンソールの
+  Service Quotas > AWS services > Amazon SageMaker で `ml.g5.2xlarge for training job usage` を検索し、
+  Applied quota value が 1 以上であることを目視確認して次へ進む
 
 ## Step 6: セル「1. 学習データを S3 へ」を実行
 
