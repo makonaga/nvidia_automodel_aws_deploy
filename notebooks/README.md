@@ -122,6 +122,22 @@ aws s3 ls s3://sagemaker-us-west-2-290918126236/automodel/cooking_basics/checkpo
 - JupyterLab space は起動中は課金されるため、作業を終えたら **Applications > JupyterLab** で **Stop space**（ホームディレクトリは保持される）
 - 途中で止めたいときはコンソール > Training > Training jobs > 該当ジョブ > **Stop**、または Notebook で `estimator.latest_training_job.stop()`
 
+## 次: 8 GPU（ml.p4d.24xlarge）での確認
+
+初回ジョブが通ったら、同じ Notebook で次の 3 点だけ変えて再実行します。
+
+| 変更箇所 | 値 | 理由 |
+|---|---|---|
+| クォータ | `ml.p4d.24xlarge for training job usage` ≥ 1 | Service Quotas で事前確認 |
+| `target` | `'p4d'` | 8×A100 40GB |
+| `RUN_TAG` | 例 `'qwen35-0.8b-lora-mtp-p4d-v1'` | 前回の prefix には 3 エポック完了済みのチェックポイントがあり、同じ prefix だと自動再開して即終了する |
+| `step_scheduler.global_batch_size` | `8` | local 1 × 8 GPU の倍数 |
+
+ログで確認すること: `torchrun --nnodes 1 --nproc_per_node 8`、`rank 0/8`〜`rank 7/8`（`sm_train` の行は各 rank が出す）、
+`World size: 8`、`nemo_automodel.components.distributed.fsdp2` が「skipping parallelization」ではなくシャーディングしていること、
+`step N` の `tps` が 1 GPU の数倍になっていること、`mem` が 1 GPU より下がっていること（FSDP2 でパラメータとオプティマイザ状態が分散される）。
+17 pack / global 8 なので 1 エポック 2 ステップ、3 エポックで 6 ステップの短いジョブになる。
+
 ## 失敗したときに共有するもの
 
 1. Notebook に流れたログの、`Invoking script with the following command:` から最後のエラーまで
