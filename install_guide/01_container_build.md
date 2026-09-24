@@ -21,7 +21,7 @@
 - Docker Desktop または Docker Engine。空きディスク 60 GB 以上（DLC 本体が 20 GB 超）
 - AWS CLI v2 が設定済みで、`aws sts get-caller-identity` が通ること
 - IAM 権限として、DLC の pull に `ecr:GetAuthorizationToken`、`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、自アカウントの ECR に `ecr:CreateRepository`、`ecr:DescribeRepositories`、`ecr:PutImage`、`ecr:InitiateLayerUpload`、`ecr:UploadLayerPart`、`ecr:CompleteLayerUpload`、`ecr:BatchCheckLayerAvailability`
-- Apple Silicon Mac の場合は `--platform linux/amd64` でビルドします（スクリプトに含まれています）。causal-conv1d のコンパイルがエミュレーションでは非常に遅いため、`INSTALL_CAUSAL_CONV1D=0` で外すか x86 の EC2 でビルドしてください
+- Apple Silicon Mac の場合は `--platform linux/amd64` でビルドします（スクリプトに含まれています）。エミュレーションのため時間はかかります。本プロジェクトでは Apple Silicon でのビルドは未検証です
 
 ## `container/` ディレクトリの内容
 
@@ -71,7 +71,7 @@ DLC アカウントへのログイントークンは 12 時間で失効します
 REGION=$REGION ./build_and_push.sh --no-push
 ```
 
-所要時間は DLC の pull を除いて 15〜20 分です。内訳は `pip install`（数分）と causal-conv1d の nvcc コンパイル（10 分前後）です。
+所要時間は DLC の pull を除いて 15 分前後です（実測。大半が causal-conv1d の nvcc コンパイルで約 9 分）。
 
 ビルド中に次が自動で検証され、失敗するとビルドが止まります。
 
@@ -115,7 +115,7 @@ REGION=$REGION ./build_and_push.sh
 ```
 
 ステップ4 のキャッシュが使われるので再ビルドは一瞬で終わり、push だけが走ります。  
-アップロードは圧縮後の約 9.6 GB で、回線次第で数十分かかります。  
+アップロードは圧縮後の約 9.6 GB で、所要時間は回線次第です。  
 `docker push` の出力で大半のレイヤが `Layer already exists` になるのは、ベース DLC 由来のレイヤが既に自アカウントのリポジトリにあるためで正常です。
 
 完了時に次が表示されます。この URI を Notebook が `image_uri` として使います（Notebook はアカウント ID とリージョンから自動で組み立てるため、書き写す必要はありません）。

@@ -50,7 +50,7 @@ YAML は `ConfigNode` として読み込まれ、次のように扱われます�
 
 | パラメータ | 既定値 | このリポジトリ | 説明 |
 | --- | --- | --- | --- |
-| `recipe` | | `TrainFinetuneRecipeForNextTokenPrediction` | レシピクラス名または import パス。LLM の SFT / PEFT はこのクラス。他に `TrainSeqClsRecipe`（分類）、`KnowledgeDistillationRecipeForNextTokenPrediction`（蒸留）などがある |
+| `recipe` | | `TrainFinetuneRecipeForNextTokenPrediction` | レシピクラス名または import パス。LLM の SFT / PEFT はこのクラス。他に `TrainFinetuneRecipeForSequenceClassification`（分類）、`KnowledgeDistillationRecipeForNextTokenPrediction`（蒸留）などがある |
 
 ## `seed`、`dist_env`、`nvtx`
 
@@ -99,12 +99,12 @@ YAML は `ConfigNode` として読み込まれ、次のように扱われます�
 | `trust_remote_code` | モデルに応じて自動判定 | | HF Hub のカスタムコードを許可する |
 | `cache_dir` | `HF_HUB_CACHE` | | 重みのキャッシュ先 |
 | `force_hf` | `false` | | AutoModel のネイティブ実装があっても HF の実装を使う |
-| `use_liger_kernel` | `true` | | Liger Kernel（RMSNorm、SwiGLU などの融合カーネル）を適用する。入っていなければスキップ |
+| `use_liger_kernel` | `true` | | Liger Kernel を適用する |
 | `use_sdpa_patching` | `true` | | SDPA のパッチを適用する |
 | `sdpa_method` | `None` | | SDPA のバックエンドを限定する（`flash`、`efficient`、`math`、`cudnn` のリスト）。トップレベルの `sdpa_method` でも指定できる |
 | `quantization_config` | `None` | | BitsAndBytes の設定。トップレベルの `quantization` からも生成される |
-| `load_base_model` | `false` | | 学習済みチェックポイントではなくベースモデルを明示的に読む（再開時の挙動制御） |
-| `freeze_config` | `None` | | 凍結するモジュールの指定 |
+| `load_base_model` | `false` | | 引数名のみ確認（用途は未調査） |
+| `freeze_config` | `None` | | 引数名のみ確認（凍結するモジュールの指定と思われる） |
 | HF config の項目 | | | `num_nextn_predict_layers: 0` のように書くと HF config を上書きできる。Qwen3.5 では MTP ヘッドの層数で、`0` にすると MTP を無効化する |
 
 ### `model.backend`（`BackendConfig`）
@@ -122,7 +122,7 @@ YAML は `ConfigNode` として読み込まれ、次のように扱われます�
 | `enable_fsdp_optimizations` | `false` | | FSDP2 向けの最適化 |
 | `compile_attn` | `false` | | attention を `torch.compile` する。`attn: sdpa`、`linear: torch`、`rms_norm: torch`、`rope_fusion: false` が条件 |
 | `experts` / `dispatcher` / `dispatcher_num_sms` / `dispatcher_share_token_dispatcher` / `dispatcher_async_dispatch` / `fake_balanced_gate` / `fake_gate_noise` / `gate_precision` | | | MoE 向け。dense モデルでは無関係 |
-| `cuda_graph` | 無効 | | CUDA Graph の設定 |
+| `cuda_graph` | `CudaGraphConfig()` | | CUDA Graph の設定（既定値は未調査） |
 
 DLC には TE 2.11 が入っているため、`backend` を書かないと `attn` と `linear` の既定が `te` になります。  
 このリポジトリは packed sequence の mask 経路を確実にし、後段の LoRA マージを単純にするため `sdpa` / `torch` を明示しています。
@@ -154,7 +154,7 @@ DLC には TE 2.11 が入っているため、`backend` を書かないと `attn
 | パラメータ | 既定値 | このリポジトリ | 説明 |
 | --- | --- | --- | --- |
 | `strategy` | `fsdp2` | `fsdp2` | `fsdp2`、`ddp`、`megatron_fsdp` |
-| `dp_size` | 自動（`world_size / (tp × pp × cp)`） | `none` | データ並列サイズ。`none` で自動 |
+| `dp_size` | 自動 | `none` | データ並列サイズ。`none` で world_size と他の並列サイズから自動決定 |
 | `dp_replicate_size` | `None` | | HSDP のレプリカ数（FSDP2） |
 | `tp_size` | `1` | `1` | テンソル並列サイズ |
 | `pp_size` | `1` | | パイプライン並列サイズ。2 以上なら `pipeline:` サブセクションが必要 |
@@ -198,7 +198,7 @@ DLC には TE 2.11 が入っているため、`backend` を書かないと `attn
 | `_target_` | | `nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy` | 損失関数。`FusedLinearCrossEntropy` は lm_head と CE を融合してメモリを節約する |
 | `fp32_upcast` | `true` | | logits を fp32 に上げてから CE を計算する |
 | `ignore_index` | `-100` | | 損失から除外するラベル |
-| `reduction` | `sum` | | `sum` または `mean`。`sum` のとき recipe がトークン数で正規化する |
+| `reduction` | `sum` | | `sum` または `mean`。recipe はラベルトークン数（`num_label_tokens`）を全 rank で集計して loss を正規化する |
 
 Qwen3.5 の MTP 損失は `mtp` セクションを書かなくても `MTPLossConfig()` の既定（`scaling_factor: None`、`ignore_index: -100`）で自動的に有効になります。
 
@@ -305,7 +305,7 @@ import パスで torch のオプティマイザを指定した場合はそのコ
 | `checkpoint_dir` | `checkpoints/` | `train.py` が `/opt/ml/checkpoints` に上書き | 保存先。同じディレクトリに前回のチェックポイントがあると自動で再開する |
 | `restore_from` | `None`（自動検出） | | 再開元。`LATEST`、`epoch_0_step_100` のようなサブディレクトリ名、またはパス。`None` でも最新を自動検出して再開する |
 | `model_save_format` | `safetensors` | `safetensors` | `safetensors` または `torch_save`。PEFT では `safetensors` に強制される |
-| `save_consolidated` | `final` | `true`（`final` と同義） | HF 形式の consolidated 重みをいつ書き出すか。`false`、`final`（最後のみ）、`every`（毎回）。`true` は `final` |
+| `save_consolidated` | `final` | `true`（`every` と同義） | HF 形式の consolidated 重みをいつ書き出すか。`false`、`final`（最後のみ）、`every`（チェックポイントごと）。bool の `true` は `every`、`false` は `false` に正規化される |
 | `best_metric_key` | `default` | | `LOWEST_VAL` の判定に使う検証セット名（`validation_dataset_<name>` の `<name>`） |
 | `max_recent_checkpoints` | `None`（全部残す） | | 直近 N 個だけ残す。`LATEST` / `LOWEST_VAL` が指すものは保護される |
 | `is_async` | `false` | | 非同期保存 |
@@ -342,7 +342,7 @@ import パスで torch のオプティマイザを指定した場合はそのコ
 | `fp8` | `enabled`（`false`）、`recipe_name`（`tensorwise` / `rowwise` / `rowwise_with_gw_hp`）、`filter_fqns`、`emulate`、`enable_fsdp_float8_all_gather` | torchao の FP8 学習。H100 以降 |
 | `compile` | `enabled`（`false`）、`mode`（`default`）、`fullgraph`、`dynamic`、`backend`、`options`、`dynamo_cache_size_limit`（`256`） | モデル全体の `torch.compile` |
 | `qat` | `enabled`（`false`）、`quantizer_type`（`int8_dynact_int4weight` / `int4_weight_only`）ほか | torchao の量子化認識学習。`fake_quant_after_n_steps` で開始ステップを指定 |
-| `quantization` | BitsAndBytes の設定（`load_in_4bit` など） | QLoRA 向け。`create_bnb_config` で `quantization_config` に変換される |
+| `quantization` | BitsAndBytes の設定 | `create_bnb_config` で `quantization_config` に変換される（項目は未調査） |
 | `prewarm` | `cublas_backward`、`fla_gdn_autotune`、`mamba_ssd_autotune`、`comm_groups`（すべて `false`） | 最初のステップで失敗する場合に、setup 時に初期化を先に行う。`fla_gdn_autotune` は Qwen3.5 の GDN 層の Triton autotune を setup で済ませる |
 | `embedding_row_repair` | `min_norm`（`1.0e-4`）、`max_rows`（`256`） | 壊れた入力埋め込み行の修復 |
 | `neftune` | `noise_alpha`（`5.0`）または数値 | NEFTune（埋め込みへのノイズ付加） |
@@ -356,5 +356,5 @@ import パスで torch のオプティマイザを指定した場合はそのコ
 - `distributed.dp_size: none` は文字列 `"none"` が `None` に変換され、自動計算になる
 - `model.backend` を書かないと DLC 上では TE バックエンドになる。TE の attention は packed（`neat`）の 4D mask を padding mask として解釈するため、`neat` を使うときは `attn: sdpa` を明示する
 - `packed_sequence` を有効にすると `global_batch_size` / `local_batch_size` の単位が pack になる。`train.py` の `warmup_epochs` は pack 数を見積もってウォームアップを計算する
-- `checkpoint.save_consolidated: true` は `final` と同じ意味で、学習終了時に HF 形式の重みを書き出す。PEFT ではアダプタが HF PEFT 形式で `model/` に保存される
+- `checkpoint.save_consolidated: true` は `every` と同じ意味で、チェックポイントごとに HF 形式の重みを書き出す（学習終了時のみにするなら `final`）。PEFT ではアダプタが HF PEFT 形式で `model/` に保存される
 - `step_scheduler.ckpt_every_steps` を `None` にするとエポック末のみの保存になる。`50` などの値は SageMaker の `checkpoint_s3_uri` 同期と組み合わせて Spot 中断の損失を抑える

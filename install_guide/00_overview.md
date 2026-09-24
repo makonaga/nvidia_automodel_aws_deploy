@@ -130,10 +130,10 @@ AutoModel は同じディレクトリに前回のチェックポイントがあ�
 
 | 順 | ガイド | 内容 | 目安 |
 | --- | --- | --- | --- |
-| 1 | `01_container_build.md` | ローカル PC で DLC を pull し、AutoModel を載せたイメージをビルドして ECR へ push する | 1〜2 時間（DLC の pull と causal-conv1d のコンパイル、19.7 GB の push） |
-| 2 | `02_local_verification.md` | ローカル GPU でスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行を行う。GPU が無ければスモークテストのみ | 30 分 |
-| 3 | `03_training_job.md` | SageMaker Studio の Notebook から `ml.g5.2xlarge` で最初の Training Job を実行する | 30 分（ジョブ自体は 10 分前後） |
-| 4 | `04_scale_and_operations.md` | 8 GPU、再開、Spot を確認し、本番モデルに差し替える | 1 時間 |
+| 1 | `01_container_build.md` | ローカル PC で DLC を pull し、AutoModel を載せたイメージをビルドして ECR へ push する | DLC の pull と push は回線次第。ビルドは causal-conv1d のコンパイルを含めて 15 分前後（実測） |
+| 2 | `02_local_verification.md` | ローカル GPU でスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行を行う。GPU が無ければスモークテストのみ | 学習テストは 1 回 5 分前後（実測。初回はモデルの DL が加わる） |
+| 3 | `03_training_job.md` | SageMaker Studio の Notebook から `ml.g5.2xlarge` で最初の Training Job を実行する | ジョブは 8 分（実測） |
+| 4 | `04_scale_and_operations.md` | 8 GPU、再開、Spot を確認し、本番モデルに差し替える | 8 GPU のジョブは 14 分（実測。確保待ちを含む）。再開・Spot・本番差し替えは未実施 |
 
 設定の意味やデータ形式を確認したいときは `05_configuration.md`、問題が起きたときは `06_troubleshooting.md` を参照してください。
 
@@ -143,8 +143,8 @@ AWS 環境として次が必要です。
 
 - `us-west-2` で SageMaker Studio、ECR、S3、CloudWatch Logs を使える IAM 権限
 - SageMaker 実行ロール（`AmazonSageMakerFullAccess` 相当）
-- Service Quotas で対象インスタンスの `for training job usage` が 1 以上（`ml.g5.2xlarge` は既定で付与されていることが多いが、`ml.p4d.24xlarge` は申請が必要な場合がある。承認に数時間〜数日）
-- Training Job から Hugging Face Hub に到達できるネットワーク（VPC を指定しない構成）。到達できない場合はベースモデルを S3 に置き、`model` チャネルで渡す
+- Service Quotas で対象インスタンスの `for training job usage` が 1 以上（検証したアカウントでは `ml.g5.2xlarge` が 4、`ml.p4d.24xlarge` も付与済みだった。無ければ申請が必要で、承認までの時間はアカウントによる）
+- Training Job から Hugging Face Hub に到達できるネットワーク（Estimator に VPC を指定しない構成。検証はこの構成で行った）。到達できない場合はベースモデルを S3 に置き、`model` チャネルで渡す（`train.py` の `model` チャネル対応はローカルの模擬実行で確認済み、SageMaker 上では未実施）
 
 ローカル PC として次が必要です。
 

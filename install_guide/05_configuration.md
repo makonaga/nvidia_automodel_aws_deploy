@@ -75,7 +75,7 @@ AutoModel は `global_batch_size` に満たない最後のバッチを捨てる�
 | `packed_sequence` | `packed_sequence_size: 2048`、`packing_strategy: neat`、`drop_long_samples: true` | 複数サンプルを 1 本の系列に詰める。MTP を有効にするために必須 |
 | `optimizer` | `AdamW`、`lr: 1e-4`、`weight_decay: 0.01` | |
 | `lr_scheduler` | `cosine`、`min_lr: 6e-6`、`lr_warmup_steps: 0` | `warmup_epochs` を渡すと `train.py` が上書きする |
-| `checkpoint` | `safetensors`、`save_consolidated: true` | PEFT では HF PEFT 形式のアダプタが `model/` に保存される |
+| `checkpoint` | `safetensors`、`save_consolidated: true` | `true` は `every` と同義で、チェックポイントごとに HF 形式で書き出す。PEFT では HF PEFT 形式のアダプタが `model/` に保存される |
 
 `configs/local/qwen3_5_cooking_lora_local.yaml` はローカル検証用で、pack 長 1024、`max_steps: 20`、出力先が `out/local_test/` になっている以外は同じ構成です。
 
@@ -90,7 +90,7 @@ packed では Qwen3.5 の線形 attention 層が文書境界を守るために `
 
 packed sequence では `global_batch_size` と `local_batch_size` の単位が「サンプル」ではなく「pack（`packed_sequence_size` トークン）」になります。  
 料理データ（245 件、平均 127 トークン）は pack 2048 で 17 pack になり、`global_batch_size: 8` では 1 エポック 2 ステップです。  
-1 pack あたりの VRAM は約 14.5 GiB（pack 2048、Qwen3.5-0.8B、LoRA、MTP 有効）で、A10G 24 GB と A100 40 GB では `local_batch_size: 1`、A100 80 GB では 2〜4 が目安です。
+1 pack あたりの VRAM は約 14.5 GiB（pack 2048、Qwen3.5-0.8B、LoRA、MTP 有効。A10G と A100 40 GB で実測）で、これらでは `local_batch_size: 1` です。A100 80 GB や 7B 級モデルでの値は未検証です。
 
 ## 学習データの形式
 
@@ -124,10 +124,10 @@ training.jsonl / validation.jsonl # ステップごとのメトリクス（loss�
 training_info.json                # 選択したチェックポイント、選択基準、ベースモデル、world_size
 ```
 
-フル微調整（`peft` セクションなし）の場合は `model/` に HF 形式の consolidated 重みが入ります。
+フル微調整（`peft` セクションなし）は本プロジェクトでは未検証です。AutoModel の仕様では `model/` に HF 形式の consolidated 重みが保存されます。
 
 チェックポイントそのもの（`epoch_*_step_*/`、`LATEST`、`LOWEST_VAL`）は `checkpoint_s3_uri` の prefix に残ります。  
-`/opt/ml/checkpoints` の同期エージェントが置く `*.sagemaker-uploaded` マーカーは `model.tar.gz` には含まれません。
+`/opt/ml/checkpoints` の同期エージェントが置く `*.sagemaker-uploaded` マーカーは、初回ジョブでは `model.tar.gz` に混入していました。`train.py` で除外するよう修正済みですが、修正後の成果物一覧はまだ確認していません。
 
 ## CloudWatch メトリクス
 

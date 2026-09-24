@@ -112,7 +112,7 @@ Notebook の `RUN_TAG` は選択したインスタンスの `target` を含む�
 Qwen3.5 の MTP ヘッドについて、このリポジトリは MTP ヘッドを有効にしたまま学習する構成です（vLLM / SGLang の投機的デコーディングで使うため）。  
 AutoModel 0.6.0 の MTP はパディング付きバッチでは動かないため、設定 YAML は packed sequence を前提にしています。バッチサイズの単位が「サンプル」ではなく「pack」になる点に注意してください。
 
-コストについて、`ml.p4d.24xlarge` は 1 時間 30 USD 超です。動作確認は `ml.g5.2xlarge`（1 時間 1.5 USD 前後）で行い、JupyterLab space は作業後に停止してください。
+コストについて、`ml.p4d.24xlarge` は 1 時間 30 USD 超、`ml.g5.2xlarge` は 1 時間 1.5 USD 前後です（`us-west-2` の概算。最新の料金表で確認してください）。動作確認は `ml.g5.2xlarge` で行い、JupyterLab space は作業後に停止してください。
 
 機密情報について、gated モデルを使う場合の `HF_TOKEN` は Notebook にベタ書きせず、環境変数から渡してください。Git リポジトリにコミットしないよう注意してください。
 

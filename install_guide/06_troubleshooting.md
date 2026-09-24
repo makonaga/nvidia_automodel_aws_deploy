@@ -109,7 +109,7 @@ AutoModel の依存とベース DLC のパッケージに新しい衝突が生�
 
 **解決方法**
 
-`pip install` は数分〜十数分で終わるはずなので待ちます。causal-conv1d のコンパイルはエミュレーションでは現実的でないため、`--build-arg INSTALL_CAUSAL_CONV1D=0` で外すか、x86 の EC2 でビルドしてください。
+`pip install` は数分〜十数分で終わるはずなので待ちます。どうしても遅い場合は x86 の EC2 でビルドしてください。本プロジェクトでは Apple Silicon でのビルドは未検証です。
 
 ---
 
@@ -258,6 +258,8 @@ transformers 5 系の `@auto_docstring` デコレータが、モデルクラス�
 ---
 
 ## SageMaker Training Job
+
+問題15〜21 は本プロジェクトでは発生しておらず、SageMaker の一般的な失敗パターンとして対処を記載しています。問題22 は実際に観測したものです。
 
 ### 問題15: `ResourceLimitExceeded` でジョブが作成できない
 

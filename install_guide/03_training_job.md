@@ -31,6 +31,8 @@
 
 ## ステップ1: Studio で JupyterLab を起動する
 
+画面の名称は 2026-09 時点の SageMaker Studio（新 UI）のものです。検証では既存の JupyterLab space を使ったため、space 作成時の既定値（ストレージ容量など）は確認していません。
+
 1. コンソール > Amazon SageMaker AI > Studio（`us-west-2`）を開き、ユーザープロファイルで **Open Studio** を選びます
 2. 左メニューの **Applications > JupyterLab** から **Create JupyterLab space** を選びます（既存の space があればそれを使います）
    - Instance: `ml.t3.medium`（Notebook 自体は軽く、GPU は不要です）
@@ -82,10 +84,9 @@ Notebook のセル構成は次のとおりです。
 ## ステップ5: 実行構成セルとプリフライト確認セルを実行する
 
 実行構成セルは `target = 'cheap'` のまま実行します。  
-`ml.g5.2xlarge x1 | world_size=1 | local_batch=1 | global_batch=1 pack` と `RUN_TAG qwen35-0.8b-lora-mtp-cheap-v1` が表示されます。
+`ml.g5.2xlarge x1 | world_size=1 | local_batch=1 | global_batch=4 pack` と `RUN_TAG qwen35-0.8b-lora-mtp-cheap-v1` が表示されます。
 
-`global_batch_size` は `local_batch × GPU 数 × instance_count × grad_accum` で導出されます。  
-1 GPU で勾配蓄積をしたい場合は `grad_accum = 4` のように指定します。
+`global_batch_size` は `local_batch × GPU 数 × instance_count × grad_accum` で導出されます。`cheap` は勾配蓄積 4 回で global batch 4 pack になり、検証で完走した構成と同じです。
 
 続けてプリフライト確認セルを実行します。
 
@@ -133,7 +134,7 @@ Estimator の要点は次のとおりです。
 | 起動 | 0〜2 分 | `Starting - Starting the training job...` → `Downloading - Downloading input data` |
 | イメージ pull | 3〜5 分 | `Training - Training image download completed. Training in progress.` ここまでログが止まって見えるのは正常です |
 | toolkit | 直後 | `Invoking script with the following command:` に続いて `torchrun --nnodes 1 --nproc_per_node 1 train.py --config qwen3_5_cooking_lora.yaml --final_checkpoint LOWEST_VAL ...` |
-| train.py | 直後 | `rank 0/1 \| config=... \| sagemaker=True`、`dataset ← /opt/ml/input/data/train/train.jsonl`、`model ← Qwen/Qwen3.5-0.8B (--model_id)`、`checkpoint_dir ← /opt/ml/checkpoints`、`packing 見積もり: samples=245, avg_tokens=127, pack_size=2048 → packs≈17`、`lr_warmup_steps ← N`、`=== effective config ===` |
+| train.py | 直後 | `rank 0/1 \| config=... \| sagemaker=True`、`dataset ← /opt/ml/input/data/train/train.jsonl`、`model ← Qwen/Qwen3.5-0.8B (--model_id)`、`checkpoint_dir ← /opt/ml/checkpoints`、`packing 見積もり: samples=245, avg_tokens=127, pack_size=2048 → packs≈17`、`lr_warmup_steps ← 4`、`=== effective config ===` |
 | モデル DL | 1 分未満 | `Fetching 13 files` の進捗。`Warning: You are sending unauthenticated requests` は public モデルなので無視して構いません |
 | サンプル確認 | 直後 | `=== Sample Prompt 0 (rendered with chat template) ===` に `<\|im_start\|>user ... <\|im_start\|>assistant` と空の `<think>` ブロックが出る |
 | 学習 | 3〜5 分 | 最初のステップは Triton コンパイルで約 100 秒、最初の検証も約 40 秒かかります。以降は `step N \| epoch E \| loss ... \| grad_norm ... \| lr ... \| mem ... \| tps ...` が 2 秒間隔で進み、エポック末に `[val] ... loss ...` と `Saving checkpoint` が出ます |
@@ -159,14 +160,14 @@ CloudWatch には `httpx` の HF Hub アクセスログも大量に出るため�
 aws s3 ls s3://<bucket>/automodel/cooking_basics/checkpoints/qwen35-0.8b-lora-mtp-cheap-v1/ --region us-west-2
 ```
 
-`epoch_*_step_*/` と `LATEST`、`LOWEST_VAL` が同期されていれば、次回同じ `RUN_TAG` で実行したときにここから自動で再開されます。  
+`epoch_*_step_*/` と `LATEST`、`LOWEST_VAL` が同期されていれば（検証では S3 側の一覧は確認しておらず、ジョブ内の `/opt/ml/checkpoints` への保存ログと `model.tar.gz` の内容で確認した）、次回同じ `RUN_TAG` で実行したときにここから自動で再開されます。  
 モデルや PEFT の設定を変えて再実行するときは `RUN_TAG` を変えるか、`hyperparameters` の `fresh_start` を `1` にしてください。
 
 ## ステップ12: 後片付け
 
 - Training Job はインスタンスの終了で課金が止まります。`Completed`、`Failed`、`Stopped` のいずれかになっていれば追加費用はありません
 - JupyterLab space は起動中に課金されるため、作業を終えたら **Applications > JupyterLab** で **Stop space** を選びます（ホームディレクトリは保持されます）
-- ジョブを途中で止めるときは、コンソール > Training > Training jobs > 該当ジョブ > **Stop**、または Notebook で `estimator.latest_training_job.stop()` を実行します
+- ジョブを途中で止めるときは、コンソール > Training > Training jobs > 該当ジョブ > **Stop** を選びます（検証では途中停止は行っていません）
 
 ## 完了の確認
 
