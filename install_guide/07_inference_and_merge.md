@@ -124,7 +124,7 @@ Notebook 側に vLLM を入れる必要はありません。Notebook は `sagema
    - `merge_and_unload()` でマージし、`/opt/ml/model` に `save_pretrained`（safetensors）、tokenizer、processor 設定を保存する
    - 保存したモデルを読み直し、アダプタ付きモデルと同じプロンプトで生成して一致を確認する（`verify: 1`）
    - 結果を `output.tar.gz` の `merge_info.json` に書く
-4. セル「3.」でエンドポイントをデプロイする（`ml.g5.2xlarge`、InService まで数分）
+4. セル「3.」でエンドポイントをデプロイする。候補インスタンスを順に試し（既定は `ml.g5.xlarge` → `ml.g5.2xlarge` → `ml.g6.2xlarge` → `ml.g6e.2xlarge`）、在庫不足で失敗した分は自動で削除する。InService まで 10 分前後
 5. セル「4.」で 5 件のプロンプトを Chat Completions 形式で送り、出力を確認する。`chat_template_kwargs: {"enable_thinking": false}` で学習時と同じレンダリングにする
 6. セル「5.」でステップ1 の HF + PEFT の出力と並べて比較する（任意）
 7. **セル「6.」でエンドポイントとモデルを削除する**
