@@ -96,8 +96,8 @@ Target sizes: [2, 8, 129, 129]. Tensor sizes: [2, 129]
 **LoRA を本体と MTP ヘッドの両方にマージした HF 形式のフルチェックポイント**を作って配信する必要があります。
 AutoModel 同梱の `tools/merge_lora.py` は HF の `AutoModelForCausalLM` + `PeftModel` 経由でマージするため、
 transformers 側で `mtp.*`（と `model.visual.*`）が読み飛ばされ、出力に MTP の重みが含まれません。
-AutoModel のネイティブモデル上でマージし（`LinearLoRA.materialize_effective_weight`）、state dict adapter で
-HF キー（`mtp.layers.0.*`）に戻して書き出すツールを別途用意します（Phase 7）。
+そのため、ベースの safetensors から `mtp.*` を直接読み、アダプタの `mtp.*` の LoRA を足し込んで HF キー名で書き出すツール
+`src/inference/merge_adapter_mtp.py` を用意しました（Phase 7、ガイド 07 ステップ3。AWS 上での実行は未実施）。
 
 ### 2.2b AutoModel の attention / Linear バックエンドは既定で TE になる
 
@@ -305,7 +305,7 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - ~~SageMaker 上での初回ジョブ（ml.g5.2xlarge）~~ → 2026-09-24 完了（§4.2）
 - ~~Phase 6-1: 複数 GPU~~ → 2026-09-24 ml.p4d.24xlarge で完了（§4.3）。8 GPU でのスループット倍率は本番規模データで再評価
 - Phase 6-2/6-3: `checkpoint_s3_uri` からの再開、Spot 中断・再開
-- LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
+- LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7）→ `src/inference/merge_adapter_mtp.py` と `notebooks/04_merge_mtp_and_deploy_vllm.ipynb` を作成済み。AWS 上での実行と、vLLM の MTP 投機的デコーディングでの受理率の確認は未実施（ガイド 07 ステップ3）
 - ~~vLLM を含む推論用イメージの用意と、vLLM の Qwen3.5 対応バージョンの確認（ステップ2）~~ → AWS vLLM DLC で完了（4.5）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - MTP の padded 経路の形状エラーを AutoModel に報告するか

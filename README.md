@@ -101,7 +101,7 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 
 **configs** ディレクトリには、AutoModel の設定 YAML が含まれています。`sagemaker/` が Training Job 用、`local/` がローカル検証用です。Training Job では `dependencies` として `src` と一緒にアップロードされます。
 
-**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb`、学習したアダプタを HF でロードして生成を検証する `02_verify_adapter_inference.ipynb`、アダプタをマージして AWS の vLLM DLC でエンドポイントに配信する `03_merge_and_deploy_vllm.ipynb` が含まれています。SageMaker Studio の JupyterLab で実行します。
+**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb`、学習したアダプタを HF でロードして生成を検証する `02_verify_adapter_inference.ipynb`、アダプタをマージして AWS の vLLM DLC でエンドポイントに配信する `03_merge_and_deploy_vllm.ipynb`、本体と MTP ヘッドの両方にマージして MTP 投機的デコーディング付きで配信する `04_merge_mtp_and_deploy_vllm.ipynb`（未実施）が含まれています。SageMaker Studio の JupyterLab で実行します。
 
 **data** ディレクトリには、動作確認用のサンプルデータ（料理の基礎知識に関する日本語の instruction データ 306 件）と、その生成スクリプトが含まれています。形式は `data/README.md` を参照してください。
 
@@ -126,7 +126,7 @@ AutoModel 0.6.0 の MTP はパディング付きバッチでは動かないた�
 **本番のモデル学習に使う場合は、既存モデルとの精度比較（損失マスク、チャットテンプレート、LoRA のスケールの整合）、コスト見積もり、チェックポイントの保持方針を必ず確認してください。**
 
 配信用のチェックポイントについて、出力される成果物は LoRA アダプタです。  
-vLLM / SGLang で MTP を使って配信するには、LoRA を本体と MTP ヘッドにマージした HF 形式のチェックポイントが必要で、このリポジトリではまだツールを提供していません（`install_guide/reference/04_verification_log.md` 2.2）。
+vLLM / SGLang で MTP を使って配信するには、LoRA を本体と MTP ヘッドにマージした HF 形式のチェックポイントが必要です。そのためのツール `src/inference/merge_adapter_mtp.py` と Notebook を用意していますが、AWS 上での動作確認はまだ行っていません（`install_guide/07_inference_and_merge.md` ステップ3）。
 
 ## ガイド一覧
 
@@ -149,7 +149,7 @@ Notebook の各セルの意味、ログの見どころ、成果物の確認方�
 
 設定リファレンス（install_guide/05_configuration.md）では、`train.py` のハイパーパラメータ、SageMaker の規約と AutoModel 設定の対応、設定 YAML の各セクションの意図、学習データの形式、`model.tar.gz` の内容、CloudWatch メトリクスを説明しています。
 
-推論とマージのガイド（install_guide/07_inference_and_merge.md）では、学習した LoRA アダプタを HF transformers + PEFT でロードして生成する検証（実施済み。本体のアダプタはすべて一致し、MTP ヘッド分だけが未使用になることを確認）、マージ済みモデルの作成と AWS の vLLM DLC でのエンドポイント配信（実施済み）、MTP ヘッドを含めたマージ（未作成）の手順をまとめます。
+推論とマージのガイド（install_guide/07_inference_and_merge.md）では、学習した LoRA アダプタを HF transformers + PEFT でロードして生成する検証（実施済み。本体のアダプタはすべて一致し、MTP ヘッド分だけが未使用になることを確認）、マージ済みモデルの作成と AWS の vLLM DLC でのエンドポイント配信（実施済み）、本体と MTP ヘッドの両方へのマージと MTP 投機的デコーディング付きの配信（ツール作成済み、未実施）の手順をまとめます。
 
 トラブルシューティングガイド（install_guide/06_troubleshooting.md）では、コンテナのビルド、ローカル検証、Training Job で発生する問題と解決方法、ログに出る無害なメッセージの一覧をまとめています。  
 問題が発生した際に参照してください。

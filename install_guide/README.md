@@ -15,7 +15,7 @@ NeMo AutoModel を Amazon SageMaker Training Job で動かすためのガイド�
 | `04_scale_and_operations.md`               | 8 GPU、チェックポイント再開、Spot、本番モデルへの差し替え               | 8 GPU は実施済み（`ml.p4d.24xlarge`）。再開・Spot・本番差し替えは**未実施** |
 | `05_configuration.md`                      | `train.py` のハイパーパラメータ、設定 YAML、データ形式、成果物         | —                                                     |
 | `06_troubleshooting.md`                    | トラブルシューティング                                     | —                                                     |
-| `07_inference_and_merge.md`                | アダプタの推論、マージ、vLLM 配信                          | ステップ1（HF + PEFT でのロードと生成）とステップ2（マージと vLLM DLC 配信）は実施済み。ステップ3（MTP ヘッドを含むマージ）は**未作成** |
+| `07_inference_and_merge.md`                | アダプタの推論、マージ、vLLM 配信                          | ステップ1（HF + PEFT でのロードと生成）とステップ2（マージと vLLM DLC 配信）は実施済み。ステップ3（MTP ヘッドを含むマージと MTP 配信）はツールと Notebook を作成済みで**未実施** |
 | `reference/01_design_rationale.md`         | 設計判断の根拠（AutoModel の起動方式、コンテナ方針の比較、落とし穴）         | —                                                     |
 | `reference/02_composer_migration.md`       | MosaicML Composer 版 SFT からの移行設計と設定マッピング         | 設定 YAML と `train.py` に反映済み。本番モデルでの精度比較は未実施            |
 | `reference/03_dlc_selection.md`            | ベース DLC イメージの選定                                 | 選定結果でビルド・実行済み                                         |

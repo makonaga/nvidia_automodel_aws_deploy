@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | 実施済み（2026-09-25、`ml.g5.2xlarge`、課金 325 秒） |
 | 2 | アダプタをマージした HF 形式モデルを作り、AWS の vLLM DLC で SageMaker エンドポイントとして配信する | 実施済み（2026-09-25。マージジョブ 315 秒、エンドポイントは `ml.g5.xlarge` で InService まで 573 秒） |
-| 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | 未実施（手順未作成） |
+| 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | ツール（`src/inference/merge_adapter_mtp.py`）と Notebook（`04_merge_mtp_and_deploy_vllm.ipynb`）は作成済み。**AWS 上では未実施** |
 
 ## 前提として分かっていること（ソースで確認済み）
 
@@ -154,7 +154,83 @@ Notebook 側に vLLM を入れる必要はありません。Notebook は `sagema
 - vLLM DLC エンドポイントで生成でき、学習データの文体になっている
 - エンドポイントを削除した
 
-## ステップ3: MTP ヘッドを含めてマージする（未作成）
+## ステップ3: 本体と MTP ヘッドの両方にマージし、MTP 投機的デコーディングで配信する（未実施）
 
-vLLM / SGLang の MTP 投機的デコーディングで学習済みの MTP ヘッドを使うには、本体と MTP ヘッドの両方に LoRA をマージした HF 形式（`mtp.*` を含む）のチェックポイントが必要です。  
-HF クラス経由のマージでは `mtp.*` が落ちるため、ステップ2 の出力に MTP ヘッドの重み（ベースの `mtp.*` に、アダプタの `mtp.*` の LoRA を `W + (alpha/r)·B·A` で加えたもの）を追加する形で実装する予定です。vLLM 0.30.0 には `Qwen3_5MTP` があり、`--speculative-config` の `mtp` 方式で使えます。
+vLLM の MTP 投機的デコーディングで学習済みの MTP ヘッドを使うには、本体と MTP ヘッドの両方に LoRA をマージした HF 形式（`mtp.*` を含む）のチェックポイントが必要です。  
+ステップ2 の HF クラス経由のマージでは `mtp.*` が落ちるため、`src/inference/merge_adapter_mtp.py` で MTP ヘッド分を別に計算して出力に加えます。  
+ツールと Notebook は作成済みですが、AWS 上での実行はまだ行っていません。以下の「期待する結果」はソースから導いたもので、実測ではありません。
+
+### 前提として調べたこと（2026-09-25 時点、ソースで確認）
+
+AutoModel 側（v0.6.0、`nemo_automodel/components/models/qwen3_5/`）:
+
+- MTP ヘッドは HF の `Qwen3_5DecoderLayer`（full attention）1 層に `enorm`、`hnorm`、`eh_proj`、`final_layernorm` を足した構造（`Qwen3_5DenseMTPSublayer`）。LoRA は `eh_proj`、`self_attn.{q,k,v,o}_proj`、`mlp.{gate,up,down}_proj` の 8 モジュールに付く（ステップ1 で確認した `mtp.*` 16 キー = 8 モジュール × A/B）
+- `state_dict_adapter.py` が HF 形式との間で名前を変換するのは 4 キーだけ。`mtp.layers.0.eh_proj.weight` ↔ `mtp.fc.weight`、`enorm` ↔ `mtp.pre_fc_norm_embedding.weight`、`hnorm` ↔ `mtp.pre_fc_norm_hidden.weight`、`final_layernorm` ↔ `mtp.norm.weight`。decoder 層の `mtp.layers.0.self_attn.*` などは HF でも同名
+- LoRA のスケールは `alpha / dim`（`_peft/lora.py`）で、`adapter_config.json` の `lora_alpha / r` と同じ。PEFT の `merge` と同じ `W + (lora_alpha / r) · B · A` で足し込める。`adapter_config.json` には `use_dora` も書かれる（このリポジトリの設定では false）
+
+vLLM 側（`v0.30.0`）:
+
+- `Qwen3_5MTP` が登録されており、`--speculative-config '{"method": "mtp", ...}'` で `model_type` が `qwen3_5` のモデルはドラフトとして `Qwen3_5MTP` が選ばれる（`vllm/config/speculative.py`）。ドラフトの層数は `config.json` の `mtp_num_hidden_layers`（最上位または `text_config`）から読み、`num_speculative_tokens` を省略した場合の既定値になる
+- ドラフトモデルは本体と同じチェックポイントから重みを読む。`Qwen3_5MTP.load_weights` は `mtp.` で始まるキーを `model.` に読み替え、`embed_tokens` と `lm_head` は本体の重みを使う。モジュール名は `fc`、`pre_fc_norm_embedding`、`pre_fc_norm_hidden`、`norm`、`layers.N`（full-attention の decoder 層）で、上記の HF キー名と一致する
+- 本体側（`Qwen3_5ForConditionalGeneration`）は `mtp.` で始まるキーを読み捨てる設定なので、`mtp.*` を含めても本体のロードには影響しない
+- `Qwen3_5MTP` は Mamba キャッシュモード `all` では動かない（`align` を使う）。v0.30.0 の既定は `none`（prefix caching 無効時）か `align`（有効時）で、`all` は非推奨のため、既定のままで問題ない見込み
+
+transformers 側（5.12.1、学習イメージ）:
+
+- `Qwen3_5TextConfig` に MTP の項目は無いが、`PretrainedConfig` は未知のキーを属性として保持し `to_dict` で書き出すため、ステップ2 の `save_pretrained` でも `mtp_num_hidden_layers` は残る見込み。ツールはこれに頼らず、ベースの `config.json` から読んだ値を出力の `config.json` に明示的に書き、書く前の値を `merge_mtp_info.json` の `config_field_before` に記録する
+
+AWS 側（vLLM DLC のエントリポイント `sagemaker_args.py`）:
+
+- `SM_VLLM_*` の値が 1 つの JSON オブジェクトなら、そのまま 1 引数として渡される。`SM_VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":1}'` → `--speculative-config '{...}'`
+
+未確認のこと:
+
+- `Qwen/Qwen3.5-0.8B` の safetensors に `mtp.*` が入っていること、`config.json` に `mtp_num_hidden_layers` があることは、この環境から Hugging Face Hub に接続できず直接は確認していない（AutoModel のキー変換表と vLLM のローダーがそれを前提にしていることからの推定）。ツールはどちらかが無ければ明示的に失敗する
+- vLLM が実際に MTP ドラフトを起動すること、受理率、速度はジョブとエンドポイントで確認する
+
+### ツールの処理（`src/inference/merge_adapter_mtp.py`）
+
+1. 本体: ステップ2 と同じく `Qwen3_5ForConditionalGeneration` + `PeftModel.merge_and_unload()` でマージして保存する。ステップ2 の `model.tar.gz` を `merged` チャネルに渡すとこの処理を省略し、その中身を使う
+2. ベースの `mtp.*`: `huggingface_hub.snapshot_download` でベースの safetensors を取り、`mtp.` で始まるテンソルを直接読む（transformers を通さない）
+3. MTP ヘッドのマージ: アダプタの `base_model.model.mtp.layers.0.<module>.lora_{A,B}.weight` ごとに、AutoModel のキー名を HF のキー名に変換してベースの重みを探し、`W + (lora_alpha / r) · B · A` を bf16 で書き戻す。形状不一致、対応するベースの重みが無い、A/B が揃わない、DoRA や `rank_pattern` 付き、のいずれかなら失敗する。モジュールごとに `|delta| / |W|` をログと `merge_mtp_info.json` に出す
+4. 出力: `model.safetensors` が 1 ファイルなら `mtp.*` を加えて書き直す。分割（`model.safetensors.index.json` あり）なら `model-mtp.safetensors` を追加し index を更新する。`config.json` に MTP 層数を書く
+5. 検証（`verify: 1`）: 出力の `mtp.*` の数と値を読み直して照合し、HF で本体を読み直してアダプタ付きの生成と一致することを確認する（HF は `mtp.*` を読み飛ばすので、本体の結果はステップ2 と同じになるはず）
+
+MTP ヘッド自体の動作は学習イメージの中では確認しません（AutoModel の MTP 経路は packed 入力専用で、推論用の経路が無い）。動作確認は vLLM のエンドポイントで行います。
+
+### 手順
+
+`notebooks/04_merge_mtp_and_deploy_vllm.ipynb` を SageMaker Studio で実行します。
+
+1. セッション設定セルで、学習イメージと vLLM DLC のイメージ URI を確認する
+2. セル「1.」で学習ジョブ名を指定する。ステップ2 のマージ済み `model.tar.gz` があれば `merged_s3` に指定する（本体のマージを省略）
+3. セル「2.」でマージジョブを実行する（`ml.g5.2xlarge`）。終了後に `merge_mtp_info.json` を取り出し、マージした MTP モジュールと相対変化量、検証結果を表示する
+4. セル「3.」で `SM_VLLM_SPECULATIVE_CONFIG` を付けてエンドポイントをデプロイする（在庫不足時の候補切り替えはステップ2 と同じ）
+5. セル「4.」で 5 件のプロンプトを greedy で生成する
+6. セル「5.」でステップ2（MTP なし）の vLLM 出力と比較する
+7. セル「6.」で CloudWatch のコンテナログから `SpecDecoding metrics`（受理率）と `Qwen3_5MTP` のロード行を拾う
+8. **セル「7.」でエンドポイントとモデルを削除する**
+
+### ログと結果の見方（期待する結果。実測ではない）
+
+| 確認項目 | 期待する結果 | 意味 |
+| --- | --- | --- |
+| `base mtp.* keys: N` | `N > 0`、`mtp_num_hidden_layers=1` | ベースに MTP ヘッドがあり、層数が読めた |
+| `mtp.layers.0.xxx -> mtp.yyy ... \|delta\|/\|W\|` | 8 行。`eh_proj` は `mtp.fc.weight` に対応 | アダプタの MTP 分がすべてベースの重みに対応付いた |
+| `\|delta\|/\|W\|` | 0 より大きい | LoRA が実際に MTP ヘッドを変えている（大きさは学習量次第） |
+| `verify mtp.*: written N / expected N / equal N` | 3 つとも同じ数 | 出力に `mtp.*` が正しく入った |
+| `verify body: 3/3 ... 一致` | 3/3（`merged` チャネルを使った場合は比較なし） | 本体の重みはステップ2 と同じ |
+| エンドポイントのコンテナログ | `Qwen3_5MTP` のロード行と `SpecDecoding metrics: Mean acceptance length ...` | vLLM が MTP ドラフトを使っている |
+| セル「5.」の比較 | MTP なしと同じ出力（greedy の投機的デコーディングは出力を変えない方式） | 本体の出力が変わっていない |
+
+`Mean acceptance length` は 1 回のステップで確定するトークン数の平均（1.0 なら投機が全く当たっていない）です。0.8B に 245 件・3 エポックの学習では MTP ヘッドの精度は限られるため、受理率の絶対値より「MTP ドラフトが動いていること」の確認を目的とします。
+
+### 検証結果
+
+未実施です。
+
+### 完了の確認
+
+- `mtp.*` 入りの `model.tar.gz` が S3 にあり、`config.json` に `mtp_num_hidden_layers` がある
+- vLLM DLC エンドポイントが `SM_VLLM_SPECULATIVE_CONFIG` 付きで InService になり、ログに `SpecDecoding metrics` が出る
+- エンドポイントを削除した
