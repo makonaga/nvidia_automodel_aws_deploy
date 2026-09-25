@@ -183,9 +183,13 @@ AWS 側（vLLM DLC のエントリポイント `sagemaker_args.py`）:
 
 - `SM_VLLM_*` の値が 1 つの JSON オブジェクトなら、そのまま 1 引数として渡される。`SM_VLLM_SPECULATIVE_CONFIG='{"method":"mtp","num_speculative_tokens":1}'` → `--speculative-config '{...}'`
 
+ベースのチェックポイント（`Qwen/Qwen3.5-0.8B`、Hub の `config.json` と `model.safetensors.index.json` で確認）:
+
+- `config.json` の `text_config` に `mtp_num_hidden_layers: 1` がある（最上位には無い）。`mtp_use_dedicated_embeddings: false` なので MTP 用の埋め込みは別に持たず、vLLM のドラフトは本体の埋め込みと `lm_head` を使う
+- 重みは `model.safetensors-00001-of-00001.safetensors` 1 ファイルと index で、`mtp.` で始まるキーは 15 個。LoRA が付く 8 モジュール（`mtp.fc.weight`、`mtp.layers.0.self_attn.{q,k,v,o}_proj.weight`、`mtp.layers.0.mlp.{gate,up,down}_proj.weight`）はすべて存在する。残る 7 個（`mtp.layers.0.{input_layernorm,post_attention_layernorm}.weight`、`mtp.layers.0.self_attn.{q,k}_norm.weight`、`mtp.norm.weight`、`mtp.pre_fc_norm_{embedding,hidden}.weight`）は LoRA 対象外で、ベースの値をそのまま書き出す
+
 未確認のこと:
 
-- `Qwen/Qwen3.5-0.8B` の safetensors に `mtp.*` が入っていること、`config.json` に `mtp_num_hidden_layers` があることは、この環境から Hugging Face Hub に接続できず直接は確認していない（AutoModel のキー変換表と vLLM のローダーがそれを前提にしていることからの推定）。ツールはどちらかが無ければ明示的に失敗する
 - vLLM が実際に MTP ドラフトを起動すること、受理率、速度はジョブとエンドポイントで確認する
 
 ### ツールの処理（`src/inference/merge_adapter_mtp.py`）
@@ -215,10 +219,10 @@ MTP ヘッド自体の動作は学習イメージの中では確認しません�
 
 | 確認項目 | 期待する結果 | 意味 |
 | --- | --- | --- |
-| `base mtp.* keys: N` | `N > 0`、`mtp_num_hidden_layers=1` | ベースに MTP ヘッドがあり、層数が読めた |
+| `base mtp.* keys: N \| mtp_num_hidden_layers=1 (text_config)` | `N = 15` | ベースの MTP ヘッド 15 テンソルと層数が読めた |
 | `mtp.layers.0.xxx -> mtp.yyy ... \|delta\|/\|W\|` | 8 行。`eh_proj` は `mtp.fc.weight` に対応 | アダプタの MTP 分がすべてベースの重みに対応付いた |
 | `\|delta\|/\|W\|` | 0 より大きい | LoRA が実際に MTP ヘッドを変えている（大きさは学習量次第） |
-| `verify mtp.*: written N / expected N / equal N` | 3 つとも同じ数 | 出力に `mtp.*` が正しく入った |
+| `verify mtp.*: written 15 / expected 15 / equal 15` | 3 つとも 15 | 出力に `mtp.*` が正しく入った |
 | `verify body: 3/3 ... 一致` | 3/3（`merged` チャネルを使った場合は比較なし） | 本体の重みはステップ2 と同じ |
 | エンドポイントのコンテナログ | `Qwen3_5MTP` のロード行と `SpecDecoding metrics: Mean acceptance length ...` | vLLM が MTP ドラフトを使っている |
 | セル「5.」の比較 | MTP なしと同じ出力（greedy の投機的デコーディングは出力を変えない方式） | 本体の出力が変わっていない |
