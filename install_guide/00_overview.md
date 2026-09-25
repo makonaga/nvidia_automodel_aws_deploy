@@ -106,6 +106,7 @@ Training Job の中では、3 つの層が次のように役割を分担しま�
 | ベース DLC    | `pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker` |
 | AutoModel  | 0.6.0                                                           |
 | 検証済みインスタンス | `ml.g5.2xlarge`（1 GPU）、`ml.p4d.24xlarge`（8 GPU）                 |
+| 推論・配信      | HF transformers + PEFT でのアダプタ推論、マージ済み HF 形式モデルの AWS vLLM DLC（vLLM 0.30.0）での配信、Qwen3.5 の MTP 投機的デコーディング（検証は `ml.g5.xlarge`） |
 
 ## 主要な設計判断
 
@@ -135,6 +136,7 @@ AutoModel は同じディレクトリに前回のチェックポイントがあ�
 | 2   | `02_local_verification.md`   | ローカル GPU でスモークテスト、短い LoRA 学習、SageMaker 規約の模擬実行を行う。GPU が無ければスモークテストのみ   | 学習テストは 1 回 5 分前後（実測。初回はモデルの DL が加わる）                             |
 | 3   | `03_training_job.md`         | SageMaker Studio の Notebook から `ml.g5.2xlarge` で最初の Training Job を実行する | ジョブは 8 分（実測）                                                     |
 | 4   | `04_scale_and_operations.md` | 8 GPU、再開、Spot を確認し、本番モデルに差し替える                                         | 8 GPU のジョブは 14 分（実測。確保待ちを含む）。再開・Spot・本番差し替えは未実施                  |
+| 5   | `07_inference_and_merge.md`  | 学習したアダプタの推論検証、マージ、vLLM DLC でのエンドポイント配信（MTP なし / あり）を Notebook 02〜04 で行う | 検証ジョブとマージジョブは各 6 分前後、エンドポイントは InService まで 10 分前後（実測。在庫不足時は候補の切り替えに 30 分単位で加算） |
 
 設定の意味やデータ形式を確認したいときは `05_configuration.md`、問題が起きたときは `06_troubleshooting.md` を参照してください。
 

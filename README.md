@@ -1,7 +1,8 @@
 # NeMo AutoModel on Amazon SageMaker
 
 このリポジトリは、NVIDIA の LLM 学習ライブラリ NeMo AutoModel を Amazon SageMaker Training Job 上で実行するためのガイドとコード一式を提供します。  
-AWS Deep Learning Container に AutoModel を載せたカスタムコンテナ、SageMaker に AutoModel の設定を橋渡しする学習スクリプト、ジョブを起動する Notebook、動作確認用のサンプルデータで構成されます。
+AWS Deep Learning Container に AutoModel を載せたカスタムコンテナ、SageMaker に AutoModel の設定を橋渡しする学習スクリプト、ジョブを起動する Notebook、動作確認用のサンプルデータで構成されます。  
+学習後の工程として、LoRA アダプタの推論検証、ベースモデルへのマージ、AWS の vLLM Deep Learning Container を使った SageMaker エンドポイントでの配信（Qwen3.5 の MTP 投機的デコーディングを含む）までを扱います。
 
 ## プロジェクト概要
 
@@ -77,6 +78,8 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 自分のモデルとデータで学習する場合は、**install_guide/05_configuration.md** でデータ形式とハイパーパラメータを確認し、**install_guide/04_scale_and_operations.md** のステップ4 に従って差し替えてください。  
 既存の Composer 版の学習設定を移植する場合は **install_guide/reference/02_composer_migration.md** を先に読んでください。
 
+学習したアダプタを配信する場合は、**install_guide/07_inference_and_merge.md** に従って、アダプタの推論検証、マージ、vLLM DLC でのエンドポイント配信の順に進めてください。
+
 ## ディレクトリ構成
 
 このリポジトリは以下の構成になっています。
@@ -97,7 +100,7 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 
 **container** ディレクトリには、コンテナイメージの定義とスクリプトが含まれています。`Dockerfile`、依存の pin（`constraints.txt`）、ビルドと push を行う `build_and_push.sh`、ローカル検証用の `smoke_test.sh`、`local_train_test.sh`、`local_sm_sim.sh` です。
 
-**src** ディレクトリには、SageMaker のエントリポイント `train.py` が含まれています。Training Job の `source_dir` としてアップロードされます。`src/inference/` はアダプタ推論の検証ジョブ用で、`peft` を追加インストールする `requirements.txt` を持つため学習用とは分けています。
+**src** ディレクトリには、SageMaker のエントリポイント `train.py` が含まれています。Training Job の `source_dir` としてアップロードされます。`src/inference/` には推論側のジョブ用スクリプト（アダプタの推論検証 `infer_adapter.py`、本体へのマージ `merge_adapter.py`、本体と MTP ヘッドへのマージ `merge_adapter_mtp.py`）があり、`peft` を追加インストールする `requirements.txt` を持つため学習用とは分けています。
 
 **configs** ディレクトリには、AutoModel の設定 YAML が含まれています。`sagemaker/` が Training Job 用、`local/` がローカル検証用です。Training Job では `dependencies` として `src` と一緒にアップロードされます。
 
@@ -174,6 +177,19 @@ AutoModel 設定 YAML リファレンス（install_guide/reference/05_automodel_
 ## バージョン履歴
 
 このリポジトリのバージョン履歴を記録します。
+
+### バージョン1.1.0（2026-09-28）
+
+**主な内容:**
+
+- 学習した LoRA アダプタを配信に使うまでの手順を追加（`install_guide/07_inference_and_merge.md`）。すべて SageMaker Studio の Notebook から SageMaker のジョブとエンドポイントを使って検証
+- アダプタのまま HF transformers + PEFT でロードして生成を確認する検証ジョブ（`src/inference/infer_adapter.py`、`notebooks/02_verify_adapter_inference.ipynb`）。AutoModel のアダプタは `Qwen3_5ForConditionalGeneration` でロードすること、`mtp.*` の LoRA は HF では使われないことを確認
+- アダプタをベースモデルにマージした HF 形式モデルを作るジョブと、AWS の vLLM Deep Learning Container（`vllm:server-sagemaker-cuda-v2.5`、vLLM 0.30.0）による SageMaker リアルタイムエンドポイントでの配信（`src/inference/merge_adapter.py`、`notebooks/03_merge_and_deploy_vllm.ipynb`）
+- 本体と MTP ヘッドの両方に LoRA をマージして `mtp.*` 入りの HF 形式で書き出すツールと、`SM_VLLM_SPECULATIVE_CONFIG` による MTP 投機的デコーディング配信（`src/inference/merge_adapter_mtp.py`、`notebooks/04_merge_mtp_and_deploy_vllm.ipynb`）。vLLM が `Qwen3_5MTP` をドラフトとして使い、受理率 64〜66% になることを確認
+- エンドポイントのデプロイで在庫不足（`InsufficientInstanceCapacity`）時に候補インスタンスを順に試し、失敗分を自動削除する Notebook の実装
+- 設定 YAML の `rng:` セクションが AutoModel 0.6.0 では読まれないことを確認し、最上位の `seed` に変更
+- `train.py` の成果物出力で SageMaker のチェックポイント同期マーカー（`*.sagemaker-uploaded`）を除外、エポックあたりのステップ数の見積もりを drop-last に合わせて修正
+- 検証記録（`reference/04_verification_log.md` §4.4〜4.6）とトラブルシューティングの追記
 
 ### バージョン1.0.0（2026-09-25）
 
