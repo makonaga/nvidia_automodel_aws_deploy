@@ -10,7 +10,7 @@
 
 | ステップ | 内容 | 検証状況 |
 | --- | --- | --- |
-| 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | **未実施**（手順と検証スクリプトを用意済み） |
+| 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | 実施済み（2026-09-25、`ml.g5.2xlarge`、課金 325 秒） |
 | 2 | `tools/merge_lora.py` で MTP なしのマージ済みモデルを作り、vLLM で配信する | 未実施（手順未作成） |
 | 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | 未実施（手順未作成） |
 
@@ -29,8 +29,8 @@
 | Gated DeltaNet | `linear_attn.out_proj`（`in_proj_*` は `*_proj` にマッチしないため LoRA なし） | 同名 | 同名 |
 | MTP ヘッド | `mtp.layers.0.*` | 無し（HF は `mtp.*` を読み飛ばす） | 無し |
 
-したがって、HF の `Qwen3_5ForConditionalGeneration` に載せれば本体のアダプタは一致し、`mtp.*` の LoRA 重みだけが未使用になる見込みです。  
-`AutoModelForCausalLM` に載せるとパスが一致せず、PEFT は `strict=False` でロードするため、エラーにならずにアダプタが効かない状態になる可能性があります。ステップ1 の検証スクリプトは、この 2 経路でキーの一致数を自前で照合します。
+ステップ1 の検証で、HF の `Qwen3_5ForConditionalGeneration` に載せると本体のアダプタ 228 キーがすべて一致し、`mtp.*` の 16 キーだけが未使用になることを確認しました。  
+`AutoModelForCausalLM`（text-only クラス）では、`adapter_config.json` の `target_modules` がフルパス（`model.language_model.layers.N...`）で書かれているため 1 つも一致せず、PEFT が `ValueError: Target modules ... not found` で明示的に失敗します。黙って効かない状態にはなりません。
 
 ---
 
@@ -69,17 +69,34 @@ Notebook は学習と同じイメージで Training Job（`ml.g5.2xlarge`、1 GP
 
 `mtp.*` 以外のキーが `unused` に出た場合、または `matched` が 0 の場合は、モジュールパスの対応（上表）が想定と違うので、`unused_keys` の名前を確認してください。
 
+### 検証結果（2026-09-25）
+
+| 項目 | 結果 |
+| --- | --- |
+| アダプタ | 244 キー（本体 228、`mtp.*` 16）。`adapter_config.json` は `r=16`、`lora_alpha=32`、`task_type=CAUSAL_LM`、`target_modules` はフルパスで 124 モジュール（`mtp.layers.0.*` の 8 個を含む） |
+| `Qwen3_5ForConditionalGeneration` | matched 228 / unused 16（すべて `mtp.*`）/ mismatched 0。モデル側の LoRA パラメータ数 228 と一致 |
+| `AutoModelForCausalLM` | `ValueError: Target modules {...} not found in the base model`。ロード不可 |
+| 生成 | 5/5 でベースと出力が変わった。ベースは Markdown 見出し付きの長文、アダプタ付きは学習データと同じ文体（見出しなし、直接回答、5 文前後）になった。1 件は greedy デコーディングで同じ句の繰り返しに退化した |
+| 所要時間 | ジョブ全体 6 分（イメージ pull 3 分、peft のインストール数秒、モデルのロード 21 秒）。課金 325 秒 |
+
+生成の内容面（料理知識としての正しさ）は 0.8B に 245 件・3 エポックという条件では期待できず、ここでは「アダプタが載っている」ことの確認に留めます。  
+繰り返しの退化は `--repetition_penalty 1.1` などで抑えられますが、検証の既定値は変えていません。
+
 ### 完了の確認
 
 - `key check` (ConditionalGeneration) で `unused` が `mtp.*` のみ、`mismatched` が 0
-- アダプタ付きの生成が学習データの回答に近い
+- アダプタ付きの生成が学習データの文体に変わっている
 
-この結果と実測値を確認したら、本ガイドの検証状況と `reference/04_verification_log.md` に記録します。
+### ステップ2 以降への含意
+
+- HF 経由でアダプタを扱うときは `Qwen3_5ForConditionalGeneration`（`AutoModelForImageTextToText`）でロードする。上流の `tools/merge_lora.py` は `task_type=CAUSAL_LM` から `AutoModelForCausalLM` を選ぶため、そのままでは同じ `ValueError` になる。`--model-class AutoModelForImageTextToText` の指定が必要
+- `adapter_config.json` の `target_modules` に `mtp.layers.0.*` が含まれる。HF PEFT は他のモジュールが見つかれば無視するが、vLLM の LoRA ロードで問題になるかは未確認
 
 ## ステップ2: MTP なしのマージ済みモデルを作り vLLM で配信する（未作成）
 
-AutoModel 同梱の `tools/merge_lora.py`（`--base-model`、`--adapter-path`、`--output-dir`、`--dtype`）は HF の `PeftModel.merge_and_unload()` でマージして保存します。  
-ステップ1 の結果を踏まえて、どのクラスでロードするか（`mtp.*` の扱い）を決めてから手順を作成します。
+AutoModel 同梱の `tools/merge_lora.py`（`--base-model`、`--adapter-path`、`--output-dir`、`--dtype`、`--model-class`）は HF の `PeftModel.merge_and_unload()` でマージして保存します。  
+ステップ1 の結果から、`--model-class AutoModelForImageTextToText` で `Qwen3_5ForConditionalGeneration` として読み込む必要があります。マージ結果には `mtp.*` は含まれません（HF が読み飛ばすため）。  
+vLLM はコンテナイメージにも Studio にも入っていないため、配信の検証には vLLM を含むイメージが別途必要です。方針は調査のうえ決めます。
 
 ## ステップ3: MTP ヘッドを含めてマージする（未作成）
 

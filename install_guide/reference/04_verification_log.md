@@ -265,6 +265,24 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - `sm_train` の行（`dataset ←`、`packing 見積もり` など）は各 rank が出すので 8 回並ぶ。`effective config` と `Sample Prompt` は rank 0 のみ
 - p4d は確保待ちが数分ある（実測 6 分）。長引く場合はリージョン内の在庫不足が考えられる
 
+## 4.4 アダプタを HF transformers + PEFT でロードして生成（2026-09-25、ml.g5.2xlarge）
+
+`notebooks/02_verify_adapter_inference.ipynb` から検証ジョブ（`src/inference/infer_adapter.py`、peft 0.18.1 を `requirements.txt` で追加）を実行。課金 325 秒。
+
+| 項目 | 結果 |
+| --- | --- |
+| アダプタの中身 | 244 キー。本体 228（`linear_attn.out_proj` 36、`mlp.{gate,up,down}_proj` 各 48、`self_attn.{q,k,v,o}_proj` 各 12）、`mtp.layers.0.*` 16 |
+| `adapter_config.json` | `task_type=CAUSAL_LM`、`target_modules` はフルパス 124 個（`mtp.layers.0.eh_proj` など MTP の 8 個を含む） |
+| `Qwen3_5ForConditionalGeneration` + `PeftModel` | matched 228 / unused 16（`mtp.*` のみ）/ mismatched 0。事前にソースから予測したモジュール名の対応と一致 |
+| `AutoModelForCausalLM`（`Qwen3_5ForCausalLM`） | `ValueError: Target modules ... not found`。`model.layers.N` と `model.language_model.layers.N` の違いで 1 つも一致しない |
+| 生成 | 5/5 でベースと出力が変わり、学習データの文体になった。1 件は greedy で繰り返しに退化 |
+
+**気づき**
+
+- HF PEFT は「一部のモジュールが見つかれば残りは無視、全部見つからなければ `ValueError`」という挙動で、`strict=False` のロードでも未使用キーは黙って捨てる。未使用キーの照合は自前で行う必要があり、検証スクリプトはそれを実装している
+- 上流の `tools/merge_lora.py` は `task_type` から `AutoModelForCausalLM` を選ぶため、Qwen3.5 のアダプタでは `--model-class AutoModelForImageTextToText` の指定が必須
+- `mtp.*` の LoRA 重みは HF 経由では一切使われない。MTP を使う配信には別途マージが必要（2.2 の方針どおり）
+
 ## 5. 未検証・残課題
 
 - ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
@@ -272,5 +290,6 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - ~~Phase 6-1: 複数 GPU~~ → 2026-09-24 ml.p4d.24xlarge で完了（§4.3）。8 GPU でのスループット倍率は本番規模データで再評価
 - Phase 6-2/6-3: `checkpoint_s3_uri` からの再開、Spot 中断・再開
 - LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
+- vLLM を含む推論用イメージの用意と、vLLM の Qwen3.5 対応バージョンの確認（ステップ2）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - MTP の padded 経路の形状エラーを AutoModel に報告するか

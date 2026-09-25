@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num_samples", type=int, default=5, help="生成するプロンプト数")
     p.add_argument("--max_new_tokens", type=int, default=128)
     p.add_argument("--also_causal_lm", type=int, default=1, help="1 なら AutoModelForCausalLM 経路でもキー一致を確認する")
+    p.add_argument("--repetition_penalty", type=float, default=1.0, help="生成時の repetition_penalty (1.0 で無効)")
     return p.parse_args()
 
 
@@ -177,7 +178,7 @@ def render(tokenizer, prompt: str) -> str:
         return tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
 
 
-def generate(model, tokenizer, prompts: list[dict], max_new_tokens: int) -> list[str]:
+def generate(model, tokenizer, prompts: list[dict], max_new_tokens: int, repetition_penalty: float = 1.0) -> list[str]:
     import torch
 
     outs = []
@@ -185,7 +186,7 @@ def generate(model, tokenizer, prompts: list[dict], max_new_tokens: int) -> list
         text = render(tokenizer, r["prompt"])
         enc = tokenizer(text, return_tensors="pt").to("cuda")
         with torch.no_grad():
-            gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False)
+            gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, repetition_penalty=repetition_penalty)
         outs.append(tokenizer.decode(gen[0, enc["input_ids"].shape[1]:], skip_special_tokens=True).strip())
     return outs
 
@@ -216,9 +217,9 @@ def main() -> None:
     # 1) ConditionalGeneration (モジュールパスが AutoModel と同じ) でベース → アダプタ
     base = load_base(args.model_id, "conditional_generation")
     results["base_class"] = type(base).__name__
-    base_out = generate(base, tokenizer, prompts, args.max_new_tokens)
+    base_out = generate(base, tokenizer, prompts, args.max_new_tokens, args.repetition_penalty)
     peft_model, results["key_check_conditional_generation"] = attach_and_verify(base, adapter_dir)
-    adapter_out = generate(peft_model, tokenizer, prompts, args.max_new_tokens)
+    adapter_out = generate(peft_model, tokenizer, prompts, args.max_new_tokens, args.repetition_penalty)
     results["generations"] = [
         {"prompt": r["prompt"], "expected": r["output"], "base": b, "adapter": a, "changed": b != a}
         for r, b, a in zip(prompts, base_out, adapter_out)

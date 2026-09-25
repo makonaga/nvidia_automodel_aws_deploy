@@ -149,7 +149,7 @@ Notebook の各セルの意味、ログの見どころ、成果物の確認方�
 
 設定リファレンス（install_guide/05_configuration.md）では、`train.py` のハイパーパラメータ、SageMaker の規約と AutoModel 設定の対応、設定 YAML の各セクションの意図、学習データの形式、`model.tar.gz` の内容、CloudWatch メトリクスを説明しています。
 
-推論とマージのガイド（install_guide/07_inference_and_merge.md）では、学習した LoRA アダプタを HF transformers + PEFT でロードして生成する検証、マージ済みモデルの作成と vLLM での配信、MTP ヘッドを含めたマージの手順をまとめる予定です。現時点ではステップ1 の検証スクリプトと Notebook を用意した段階で、実機での確認は未実施です。
+推論とマージのガイド（install_guide/07_inference_and_merge.md）では、学習した LoRA アダプタを HF transformers + PEFT でロードして生成する検証（実施済み。本体のアダプタはすべて一致し、MTP ヘッド分だけが未使用になることを確認）、マージ済みモデルの作成と vLLM での配信、MTP ヘッドを含めたマージの手順をまとめます。ステップ2 以降は未実施です。
 
 トラブルシューティングガイド（install_guide/06_troubleshooting.md）では、コンテナのビルド、ローカル検証、Training Job で発生する問題と解決方法、ログに出る無害なメッセージの一覧をまとめています。  
 問題が発生した際に参照してください。
