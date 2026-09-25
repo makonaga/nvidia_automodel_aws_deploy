@@ -97,7 +97,7 @@ Target sizes: [2, 8, 129, 129]. Tensor sizes: [2, 129]
 AutoModel 同梱の `tools/merge_lora.py` は HF の `AutoModelForCausalLM` + `PeftModel` 経由でマージするため、
 transformers 側で `mtp.*`（と `model.visual.*`）が読み飛ばされ、出力に MTP の重みが含まれません。
 そのため、ベースの safetensors から `mtp.*` を直接読み、アダプタの `mtp.*` の LoRA を足し込んで HF キー名で書き出すツール
-`src/inference/merge_adapter_mtp.py` を用意しました（Phase 7、ガイド 07 ステップ3。AWS 上での実行は未実施）。
+`src/inference/merge_adapter_mtp.py` を用意しました（Phase 7、ガイド 07 ステップ3。2026-09-25 に AWS 上で確認済み、§4.6）。
 
 ### 2.2b AutoModel の attention / Linear バックエンドは既定で TE になる
 
@@ -299,13 +299,30 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - transformers 5 系の `AutoProcessor.save_pretrained` は `processor_config.json` 1 つに画像・動画の設定をまとめる。vLLM 0.30.0（transformers 5.17）はこれを読める
 - vLLM の SageMaker 用 DLC は `SM_VLLM_*` 環境変数で設定し、`model_data` の tar を `/opt/ml/model` に展開して自動で `--model` に使う。Notebook 側に vLLM は不要
 
+## 4.6 本体 + MTP ヘッドへのマージと MTP 投機的デコーディング配信（2026-09-25）
+
+| 項目 | 結果 |
+| --- | --- |
+| マージジョブ（`src/inference/merge_adapter_mtp.py`、ml.g5.2xlarge、`merged` チャネルにステップ2 の出力） | ベース `Qwen/Qwen3.5-0.8B` の `mtp.*` 15 テンソルを safetensors から直接読み、アダプタの `mtp.layers.0.*` 8 モジュールを `W + 2.0 · B · A` で足し込んだ。`\|delta\|/\|W\|` は 0.005〜0.021（`mtp.fc.weight` が最大）。出力は `model.safetensors` 1 ファイル 1747 MB。読み直し照合 15/15。課金 330 秒 |
+| `config.json` | ベースは `text_config.mtp_num_hidden_layers: 1`。transformers 5.12.1 の `save_pretrained` を通ったステップ2 の出力にも残っていた |
+| エンドポイント（vLLM DLC `server-sagemaker-cuda-v2.5`、`SM_VLLM_SPECULATIVE_CONFIG='{"method": "mtp", "num_speculative_tokens": 1}'`） | ml.g5.2xlarge と ml.g6.2xlarge は在庫不足（各 30 分前後で失敗）。ml.g5.xlarge で InService まで 633 秒。ログに `Resolved architecture: Qwen3_5MTP` |
+| 受理率 | `SpecDecoding metrics` 平均受理長 1.66 / 1.64、ドラフト受理率 65.7% / 64.3% |
+| 出力 | MTP なし（4.5）と 3/5 で完全一致。2 件は途中で分岐（bf16 の検証時バッチ形状の違いによる丸め差と推定、未検証） |
+| 速度 | 102〜128 トークンで 0.45〜0.54 秒/リクエスト。MTP なしの時間は記録しておらず比較なし |
+
+分かったこと:
+
+- HF 経由のマージで落ちる `mtp.*` は、ベースの safetensors から直接読み LoRA を足せば HF 形式に戻せる。AutoModel 側で名前が変わるのは 4 キー（`eh_proj` → `fc`、`enorm` / `hnorm` → `pre_fc_norm_*`、`final_layernorm` → `norm`）だけで、`state_dict_adapter.py` の表のとおり
+- vLLM 0.30.0 は `mtp_num_hidden_layers` を `text_config` から読めるので、`config.json` の追加編集は不要だった（ツールは念のため明示的に書く）
+- `Qwen3_5MTP` の警告 `no KV cache group could be identified as the draft model's` はハイブリッド（GDN）モデルで出るが、ドラフトは動く
+
 ## 5. 未検証・残課題
 
 - ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
 - ~~SageMaker 上での初回ジョブ（ml.g5.2xlarge）~~ → 2026-09-24 完了（§4.2）
 - ~~Phase 6-1: 複数 GPU~~ → 2026-09-24 ml.p4d.24xlarge で完了（§4.3）。8 GPU でのスループット倍率は本番規模データで再評価
 - Phase 6-2/6-3: `checkpoint_s3_uri` からの再開、Spot 中断・再開
-- LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7）→ `src/inference/merge_adapter_mtp.py` と `notebooks/04_merge_mtp_and_deploy_vllm.ipynb` を作成済み。AWS 上での実行と、vLLM の MTP 投機的デコーディングでの受理率の確認は未実施（ガイド 07 ステップ3）
+- ~~LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7）~~ → 2026-09-25 完了（§4.6）。vLLM の MTP 投機的デコーディングで受理率 64〜66% を確認。速度差（MTP あり・なし）と本番規模データでの受理率は未測定
 - ~~vLLM を含む推論用イメージの用意と、vLLM の Qwen3.5 対応バージョンの確認（ステップ2）~~ → AWS vLLM DLC で完了（4.5）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - MTP の padded 経路の形状エラーを AutoModel に報告するか

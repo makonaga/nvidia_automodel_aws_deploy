@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | 実施済み（2026-09-25、`ml.g5.2xlarge`、課金 325 秒） |
 | 2 | アダプタをマージした HF 形式モデルを作り、AWS の vLLM DLC で SageMaker エンドポイントとして配信する | 実施済み（2026-09-25。マージジョブ 315 秒、エンドポイントは `ml.g5.xlarge` で InService まで 573 秒） |
-| 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | ツール（`src/inference/merge_adapter_mtp.py`）と Notebook（`04_merge_mtp_and_deploy_vllm.ipynb`）は作成済み。**AWS 上では未実施** |
+| 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | 実施済み（2026-09-25。マージジョブ 330 秒、エンドポイントは `ml.g5.xlarge` で InService まで 633 秒、MTP ドラフトの受理率 64〜66%） |
 
 ## 前提として分かっていること（ソースで確認済み）
 
@@ -154,11 +154,11 @@ Notebook 側に vLLM を入れる必要はありません。Notebook は `sagema
 - vLLM DLC エンドポイントで生成でき、学習データの文体になっている
 - エンドポイントを削除した
 
-## ステップ3: 本体と MTP ヘッドの両方にマージし、MTP 投機的デコーディングで配信する（未実施）
+## ステップ3: 本体と MTP ヘッドの両方にマージし、MTP 投機的デコーディングで配信する
 
 vLLM の MTP 投機的デコーディングで学習済みの MTP ヘッドを使うには、本体と MTP ヘッドの両方に LoRA をマージした HF 形式（`mtp.*` を含む）のチェックポイントが必要です。  
 ステップ2 の HF クラス経由のマージでは `mtp.*` が落ちるため、`src/inference/merge_adapter_mtp.py` で MTP ヘッド分を別に計算して出力に加えます。  
-ツールと Notebook は作成済みですが、AWS 上での実行はまだ行っていません。以下の「期待する結果」はソースから導いたもので、実測ではありません。
+2026-09-25 に AWS 上で実施し、vLLM が学習済みの MTP ヘッドをドラフトとして使うところまで確認しました。
 
 ### 前提として調べたこと（2026-09-25 時点、ソースで確認）
 
@@ -188,9 +188,7 @@ AWS 側（vLLM DLC のエントリポイント `sagemaker_args.py`）:
 - `config.json` の `text_config` に `mtp_num_hidden_layers: 1` がある（最上位には無い）。`mtp_use_dedicated_embeddings: false` なので MTP 用の埋め込みは別に持たず、vLLM のドラフトは本体の埋め込みと `lm_head` を使う
 - 重みは `model.safetensors-00001-of-00001.safetensors` 1 ファイルと index で、`mtp.` で始まるキーは 15 個。LoRA が付く 8 モジュール（`mtp.fc.weight`、`mtp.layers.0.self_attn.{q,k,v,o}_proj.weight`、`mtp.layers.0.mlp.{gate,up,down}_proj.weight`）はすべて存在する。残る 7 個（`mtp.layers.0.{input_layernorm,post_attention_layernorm}.weight`、`mtp.layers.0.self_attn.{q,k}_norm.weight`、`mtp.norm.weight`、`mtp.pre_fc_norm_{embedding,hidden}.weight`）は LoRA 対象外で、ベースの値をそのまま書き出す
 
-未確認のこと:
-
-- vLLM が実際に MTP ドラフトを起動すること、受理率、速度はジョブとエンドポイントで確認する
+以上の前提は、下の検証結果のとおり実際のジョブとエンドポイントで裏付けられました。
 
 ### ツールの処理（`src/inference/merge_adapter_mtp.py`）
 
@@ -215,7 +213,7 @@ MTP ヘッド自体の動作は学習イメージの中では確認しません�
 7. セル「6.」で CloudWatch のコンテナログから `SpecDecoding metrics`（受理率）と `Qwen3_5MTP` のロード行を拾う
 8. **セル「7.」でエンドポイントとモデルを削除する**
 
-### ログと結果の見方（期待する結果。実測ではない）
+### ログと結果の見方
 
 | 確認項目 | 期待する結果 | 意味 |
 | --- | --- | --- |
@@ -229,7 +227,9 @@ MTP ヘッド自体の動作は学習イメージの中では確認しません�
 
 `Mean acceptance length` は 1 回のステップで確定するトークン数の平均（1.0 なら投機が全く当たっていない）です。0.8B に 245 件・3 エポックの学習では MTP ヘッドの精度は限られるため、受理率の絶対値より「MTP ドラフトが動いていること」の確認を目的とします。
 
-### 検証結果（2026-09-25、マージジョブまで）
+出力の分岐について: greedy の投機的デコーディングは、本体がドラフトを検証して同じトークンを選ぶ方式なので、厳密な演算では出力が変わりません。実際には検証時にドラフト分をまとめて 1 回の forward で処理するため、バッチ形状が変わり bf16 の丸めが同じにならず、確率が拮抗している位置で分岐することがあります。今回の 2 件はそれに当たると考えられますが、この説明自体は検証していません。ステップ1 と 2 の間（HF と vLLM）でも同種の分岐が出ています。
+
+### 検証結果（2026-09-25）
 
 | 項目 | 結果 |
 | --- | --- |
@@ -237,10 +237,21 @@ MTP ヘッド自体の動作は学習イメージの中では確認しません�
 | `\|delta\|/\|W\|` | `mtp.fc.weight` 0.021、`mlp.{down,gate,up}_proj` 0.007 / 0.008 / 0.010、`self_attn.{q,k,v,o}_proj` 0.007 / 0.012 / 0.005 / 0.006 |
 | 出力 | `model.safetensors` 1 ファイル（1747 MB。ステップ2 の 1706 MB に `mtp.*` 分が加わった）。`config.json` の `text_config.mtp_num_hidden_layers` はステップ2 の出力にも残っていた（`before: 1`）ため書き換えなし |
 | HF での読み直し | 473 テンソルを読み（`mtp.*` は読み飛ばし）、3 件とも生成できた。文体はステップ1・2 と同じ |
-| エンドポイント（MTP 有効） | 未実施 |
+| エンドポイント | `ml.g5.2xlarge` と `ml.g6.2xlarge` は `InsufficientInstanceCapacity`（各 30 分前後で失敗が返る）。`ml.g5.xlarge` で InService まで 633 秒 |
+| vLLM の起動ログ | 引数に `--speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'` が渡り、`Resolved architecture: Qwen3_5MTP`、`speculative_config=SpeculativeConfig(method='mtp', model='/opt/ml/model', num_spec_tokens=1)` で V1 エンジンが起動。ドラフトの `max_model_len` は 262144 から 4096 に上書きされた |
+| `SpecDecoding metrics` | 2 回の集計で平均受理長 1.66 / 1.64、ドラフト受理率 65.7% / 64.3%（Accepted 136 / 101 トークン、Drafted 207 / 157 トークン）。学習した MTP ヘッドが実際にドラフトとして使われ、提案の約 2/3 が採用された |
+| 出力の比較 | ステップ2（MTP なし、同じ 5 プロンプト、greedy）と 3/5 で完全一致。残り 2 件は途中まで一致して分岐（`小口切り` は 77 トークン目付近、`ごぼう` は 10 トークン目付近）。生成トークン数は 128 / 128 / 77→102 / 128 / 117→117 |
+| 所要時間 | 1 リクエストあたり 102〜128 トークンで 0.45〜0.54 秒（初回のみ 1.34 秒）。ステップ2 では時間を記録していないため、MTP による速度差は未測定 |
+| 警告 | `max_num_scheduled_tokens is set to 2048 based on the speculative decoding settings`（ドラフト分のトークン枠を確保したという通知）と `Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's`（本体に Mamba 系の KV キャッシュグループがある場合に、ドラフト用のグループを特定できないと出る警告。`vllm/v1/core/kv_cache_utils.py`）。どちらも受理率が出ていることから動作には影響していない |
 
 ### 完了の確認
 
 - `mtp.*` 入りの `model.tar.gz` が S3 にあり、`config.json` に `mtp_num_hidden_layers` がある
-- vLLM DLC エンドポイントが `SM_VLLM_SPECULATIVE_CONFIG` 付きで InService になり、ログに `SpecDecoding metrics` が出る
+- vLLM DLC エンドポイントが `SM_VLLM_SPECULATIVE_CONFIG` 付きで InService になり、ログに `Resolved architecture: Qwen3_5MTP` と `SpecDecoding metrics` が出る
 - エンドポイントを削除した
+
+### 本番規模での留意点（未検証）
+
+- `num_speculative_tokens` を 2 以上にすると同じ 1 層を繰り返し使うため、2 トークン目以降の受理率は下がる。効果は実データで測る
+- MTP の効果はバッチが小さい（GPU が遊んでいる）ときに大きく、高負荷では小さくなるのが一般的だが、このリポジトリでは負荷試験をしていない
+- 受理率は学習データの分布に依存する。今回の 64〜66% は学習データと同じ料理のプロンプトでの値
