@@ -101,7 +101,7 @@ ECR に既にイメージがある場合は、**install_guide/03_training_job.md
 
 **configs** ディレクトリには、AutoModel の設定 YAML が含まれています。`sagemaker/` が Training Job 用、`local/` がローカル検証用です。Training Job では `dependencies` として `src` と一緒にアップロードされます。
 
-**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb` と、学習したアダプタを HF でロードして生成を検証する `02_verify_adapter_inference.ipynb` が含まれています。SageMaker Studio の JupyterLab で実行します。
+**notebooks** ディレクトリには、Training Job を起動して成果物を確認する `01_launch_training_job.ipynb`、学習したアダプタを HF でロードして生成を検証する `02_verify_adapter_inference.ipynb`、アダプタをマージして AWS の vLLM DLC でエンドポイントに配信する `03_merge_and_deploy_vllm.ipynb` が含まれています。SageMaker Studio の JupyterLab で実行します。
 
 **data** ディレクトリには、動作確認用のサンプルデータ（料理の基礎知識に関する日本語の instruction データ 306 件）と、その生成スクリプトが含まれています。形式は `data/README.md` を参照してください。
 

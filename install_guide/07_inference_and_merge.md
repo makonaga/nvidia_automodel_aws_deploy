@@ -11,7 +11,7 @@
 | ステップ | 内容 | 検証状況 |
 | --- | --- | --- |
 | 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | 実施済み（2026-09-25、`ml.g5.2xlarge`、課金 325 秒） |
-| 2 | `tools/merge_lora.py` で MTP なしのマージ済みモデルを作り、vLLM で配信する | 未実施（手順未作成） |
+| 2 | アダプタをマージした HF 形式モデルを作り、AWS の vLLM DLC で SageMaker エンドポイントとして配信する | **未実施**（手順、マージスクリプト、Notebook を用意済み） |
 | 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | 未実施（手順未作成） |
 
 ## 前提として分かっていること（ソースで確認済み）
@@ -92,13 +92,59 @@ Notebook は学習と同じイメージで Training Job（`ml.g5.2xlarge`、1 GP
 - HF 経由でアダプタを扱うときは `Qwen3_5ForConditionalGeneration`（`AutoModelForImageTextToText`）でロードする。上流の `tools/merge_lora.py` は `task_type=CAUSAL_LM` から `AutoModelForCausalLM` を選ぶため、そのままでは同じ `ValueError` になる。`--model-class AutoModelForImageTextToText` の指定が必要
 - `adapter_config.json` の `target_modules` に `mtp.layers.0.*` が含まれる。HF PEFT は他のモジュールが見つかれば無視するが、vLLM の LoRA ロードで問題になるかは未確認
 
-## ステップ2: MTP なしのマージ済みモデルを作り vLLM で配信する（未作成）
+## ステップ2: マージ済みモデルを作り、vLLM DLC エンドポイントで配信する
 
-AutoModel 同梱の `tools/merge_lora.py`（`--base-model`、`--adapter-path`、`--output-dir`、`--dtype`、`--model-class`）は HF の `PeftModel.merge_and_unload()` でマージして保存します。  
-ステップ1 の結果から、`--model-class AutoModelForImageTextToText` で `Qwen3_5ForConditionalGeneration` として読み込む必要があります。マージ結果には `mtp.*` は含まれません（HF が読み飛ばすため）。  
-vLLM はコンテナイメージにも Studio にも入っていないため、配信の検証には vLLM を含むイメージが別途必要です。方針は調査のうえ決めます。
+### 前提として調べたこと（2026-09-25 時点、ソースと公開リポジトリで確認）
+
+vLLM 側（`vllm-project/vllm`、安定版 `v0.30.0`）:
+
+- `Qwen3_5ForConditionalGeneration` をサポートし、LoRA 対応（`SupportsLoRA`）。MTP 用の `Qwen3_5MTP` クラスも含まれる（投機的デコーディングの `mtp` 方式が使える）
+- 要求環境は torch 2.13.0、CUDA 13.0.3、Python 3.12。このリポジトリの学習イメージ（torch 2.10）とは両立しないため、vLLM は別イメージで動かす
+- AutoModel のアダプタをそのまま vLLM の LoRA として読ませることはできない。vLLM は `mtp.` で始まる重みを読み捨てる設定（`WeightsMapper` で `None`）にしているが、LoRA の重み名の変換ではこれが `ValueError: Mapped LoRA weight name cannot be None.` になる（`vllm/lora/utils.py` の `parse_fine_tuned_lora_name`）。`mtp.*` を除いたアダプタを別に作れば読める見込みだが未検証
+- 上記の理由と運用の単純さから、ステップ2 は「マージ済みのフルモデルを配信する」方式にする
+
+AWS 側（`aws/deep-learning-containers`）:
+
+- AWS 公式の vLLM Deep Learning Container が SageMaker 向けに提供されている。AL2023 版 `vllm:server-sagemaker-cuda-v2.5`（2026-09-23 リリース、vLLM 0.30.0、CUDA 13.0.2、Python 3.12）を使う。Ubuntu 版（`vllm:0.30.0-gpu-py312`）は AWS がセキュリティパッチを保証しないと明記しているため AL2023 版を選ぶ
+- 同リポジトリのモデル一覧に `Qwen/Qwen3.5-0.8B` が「Smoke + Benchmark」として載っている
+- SageMaker 用イメージはポート 8080 で vLLM の OpenAI 互換サーバーを起動し、`SM_VLLM_*` 環境変数を CLI フラグに変換する（`SM_VLLM_MAX_MODEL_LEN=4096` → `--max-model-len 4096`）。`model_data` の `model.tar.gz` は `/opt/ml/model` に展開され、`SM_VLLM_MODEL` を指定しなければ自動で `--model /opt/ml/model` になる
+- `/invocations` に OpenAI Chat Completions 形式の JSON（`messages`、`max_tokens` など）をそのまま送れる
+- デプロイ例では `inference_ami_version="al2-ami-sagemaker-inference-gpu-3-1"` を指定している（CUDA 13 系のイメージに合わせた GPU 推論 AMI）
+- LMI コンテナ（`djl-serving`）は最新の v0.36.0 で vLLM 0.17 系のため、Qwen3.5 の要件を満たさない。採用しない
+
+### 手順
+
+`notebooks/03_merge_and_deploy_vllm.ipynb` を SageMaker Studio で実行します。
+
+1. セッション設定セルで、学習イメージと vLLM DLC のイメージ URI を確認する
+2. セル「1.」で学習ジョブ名を指定する（ステップ1 と同じ）
+3. セル「2.」でマージジョブを実行する。`src/inference/merge_adapter.py` が次を行う
+   - `Qwen3_5ForConditionalGeneration` にアダプタを載せ、キーの一致を照合する（`mtp.*` 以外に未使用があれば失敗させる）
+   - `merge_and_unload()` でマージし、`/opt/ml/model` に `save_pretrained`（safetensors）、tokenizer、processor 設定を保存する
+   - 保存したモデルを読み直し、アダプタ付きモデルと同じプロンプトで生成して一致を確認する（`verify: 1`）
+   - 結果を `output.tar.gz` の `merge_info.json` に書く
+4. セル「3.」でエンドポイントをデプロイする（`ml.g5.2xlarge`、InService まで数分）
+5. セル「4.」で 5 件のプロンプトを Chat Completions 形式で送り、出力を確認する。`chat_template_kwargs: {"enable_thinking": false}` で学習時と同じレンダリングにする
+6. セル「5.」でステップ1 の HF + PEFT の出力と並べて比較する（任意）
+7. **セル「6.」でエンドポイントとモデルを削除する**
+
+### ログと結果の見方
+
+| 確認項目 | 期待する結果 |
+| --- | --- |
+| マージジョブの `adapter key check` | `matched=228 unused=16 (mtp 以外の未使用 0)` |
+| `mtp.* keys in output` | `0`（HF 経由のマージでは MTP ヘッドは含まれない） |
+| `verify: k/3 prompts で ... 一致` | 3/3（同じ重み・同じ実装なので一致するはず。bf16 の丸めで 1 件程度ずれることはあり得る） |
+| エンドポイントのデプロイ | `InService` になり、`predict` が `choices[0].message.content` を返す |
+| vLLM の出力 | ステップ1 のアダプタ付き生成と同じ文体。カーネルの違いで文字列は完全一致しない |
+
+### 完了の確認
+
+- マージ済み `model.tar.gz` が S3 にあり、`config.json` が最上位にある
+- vLLM DLC エンドポイントで生成でき、学習データの文体になっている
+- エンドポイントを削除した
 
 ## ステップ3: MTP ヘッドを含めてマージする（未作成）
 
 vLLM / SGLang の MTP 投機的デコーディングで学習済みの MTP ヘッドを使うには、本体と MTP ヘッドの両方に LoRA をマージした HF 形式（`mtp.*` を含む）のチェックポイントが必要です。  
-HF クラス経由のマージでは `mtp.*` が落ちるため、AutoModel のネイティブモデル上でマージして書き出すツールを実装します（`reference/04_verification_log.md` 2.2）。
+HF クラス経由のマージでは `mtp.*` が落ちるため、ステップ2 の出力に MTP ヘッドの重み（ベースの `mtp.*` に、アダプタの `mtp.*` の LoRA を `W + (alpha/r)·B·A` で加えたもの）を追加する形で実装する予定です。vLLM 0.30.0 には `Qwen3_5MTP` があり、`--speculative-config` の `mtp` 方式で使えます。
