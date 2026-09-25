@@ -11,7 +11,7 @@
 | ステップ | 内容 | 検証状況 |
 | --- | --- | --- |
 | 1 | アダプタのまま HF transformers + PEFT でロードして生成する（`mtp.*` の LoRA 重みの扱いを確認） | 実施済み（2026-09-25、`ml.g5.2xlarge`、課金 325 秒） |
-| 2 | アダプタをマージした HF 形式モデルを作り、AWS の vLLM DLC で SageMaker エンドポイントとして配信する | **未実施**（手順、マージスクリプト、Notebook を用意済み） |
+| 2 | アダプタをマージした HF 形式モデルを作り、AWS の vLLM DLC で SageMaker エンドポイントとして配信する | 実施済み（2026-09-25。マージジョブ 315 秒、エンドポイントは `ml.g5.xlarge` で InService まで 573 秒） |
 | 3 | 本体と MTP ヘッドの両方にマージするツールの実装と、MTP 有効での配信 | 未実施（手順未作成） |
 
 ## 前提として分かっていること（ソースで確認済み）
@@ -138,6 +138,15 @@ Notebook 側に vLLM を入れる必要はありません。Notebook は `sagema
 | `verify: k/3 prompts で ... 一致` | 3/3（同じ重み・同じ実装なので一致するはず。bf16 の丸めで 1 件程度ずれることはあり得る） |
 | エンドポイントのデプロイ | `InService` になり、`predict` が `choices[0].message.content` を返す |
 | vLLM の出力 | ステップ1 のアダプタ付き生成と同じ文体。カーネルの違いで文字列は完全一致しない |
+
+### 検証結果（2026-09-25）
+
+| 項目 | 結果 |
+| --- | --- |
+| マージジョブ | `adapter key check: matched=228 unused=16 (mtp 以外の未使用 0)`、`mtp.* keys in output: 0`、読み直し後の生成が 3/3 で一致。課金 315 秒（確保待ち 15 分は課金外） |
+| 出力ファイル | `config.json`、`model.safetensors`（1.7 GB）、`generation_config.json`、`tokenizer.json`、`tokenizer_config.json`、`chat_template.jinja`、`processor_config.json`。transformers 5 系は画像・動画の processor 設定も `processor_config.json` にまとめて保存する（旧形式の `preprocessor_config.json` は出ない）が、vLLM DLC（transformers 5.17）で問題なく読めた |
+| エンドポイント | `ml.g5.2xlarge` と `ml.g6.2xlarge` は `InsufficientInstanceCapacity` で失敗（各 5〜10 分待ってから失敗が返る）。`ml.g5.xlarge` で InService まで 573 秒 |
+| 呼び出し | Chat Completions 形式（`chat_template_kwargs: {enable_thinking: false}`、`temperature: 0`）で 5 件とも応答。出力は HF + PEFT（ステップ1）と冒頭 100 文字前後が完全一致し、後半で分岐する。bf16 の演算順とカーネルの違いによる差で、同じ重みが載っていることの確認としては十分 |
 
 ### 完了の確認
 

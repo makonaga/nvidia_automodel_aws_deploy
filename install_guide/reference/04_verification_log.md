@@ -283,6 +283,22 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - 上流の `tools/merge_lora.py` は `task_type` から `AutoModelForCausalLM` を選ぶため、Qwen3.5 のアダプタでは `--model-class AutoModelForImageTextToText` の指定が必須
 - `mtp.*` の LoRA 重みは HF 経由では一切使われない。MTP を使う配信には別途マージが必要（2.2 の方針どおり）
 
+## 4.5 マージと vLLM DLC エンドポイント配信（2026-09-25）
+
+`notebooks/03_merge_and_deploy_vllm.ipynb` から実行。
+
+| 項目 | 結果 |
+| --- | --- |
+| マージジョブ（`src/inference/merge_adapter.py`、ml.g5.2xlarge） | `Qwen3_5ForConditionalGeneration` + `PeftModel.merge_and_unload()`。キー照合 228/16/0、出力に `mtp.*` なし、読み直し後の生成 3/3 一致。課金 315 秒。確保待ち 15 分 |
+| エンドポイント（`vllm:server-sagemaker-cuda-v2.5`、vLLM 0.30.0） | `ml.g5.2xlarge`、`ml.g6.2xlarge` は在庫不足で失敗、`ml.g5.xlarge` で InService まで 573 秒。`inference_ami_version=al2-ami-sagemaker-inference-gpu-3-1` |
+| 呼び出し | `/invocations` に Chat Completions 形式。5 件とも HF + PEFT の出力と冒頭が一致 |
+
+**気づき**
+
+- この日の us-west-2 は GPU の在庫が薄く、学習ジョブ・マージジョブ・エンドポイントのいずれも確保待ちや失敗が出た。エンドポイントは候補インスタンスを順に試す実装にした（`InsufficientInstanceCapacity` は 1 候補あたり 5〜10 分待ってから返る）
+- transformers 5 系の `AutoProcessor.save_pretrained` は `processor_config.json` 1 つに画像・動画の設定をまとめる。vLLM 0.30.0（transformers 5.17）はこれを読める
+- vLLM の SageMaker 用 DLC は `SM_VLLM_*` 環境変数で設定し、`model_data` の tar を `/opt/ml/model` に展開して自動で `--model` に使う。Notebook 側に vLLM は不要
+
 ## 5. 未検証・残課題
 
 - ~~MTP 有効 + packed (neat) + causal-conv1d の構成でのローカル学習テスト~~ → 2026-09-15 完了（§4.1）
@@ -290,6 +306,6 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 - ~~Phase 6-1: 複数 GPU~~ → 2026-09-24 ml.p4d.24xlarge で完了（§4.3）。8 GPU でのスループット倍率は本番規模データで再評価
 - Phase 6-2/6-3: `checkpoint_s3_uri` からの再開、Spot 中断・再開
 - LoRA を本体と MTP ヘッドにマージして HF 形式で書き出すツール（Phase 7。vLLM / SGLang 配信に必須）
-- vLLM を含む推論用イメージの用意と、vLLM の Qwen3.5 対応バージョンの確認（ステップ2）
+- ~~vLLM を含む推論用イメージの用意と、vLLM の Qwen3.5 対応バージョンの確認（ステップ2）~~ → AWS vLLM DLC で完了（4.5）
 - DLC 同梱の TE 2.11 で TE attention / TE Linear が動くことは確認できたが、AutoModel の要求（2.14）との差は未評価
 - MTP の padded 経路の形状エラーを AutoModel に報告するか
