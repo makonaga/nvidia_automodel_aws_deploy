@@ -114,7 +114,8 @@ AWS 側（`aws/deep-learning-containers`）:
 
 ### 手順
 
-`notebooks/03_merge_and_deploy_vllm.ipynb` を SageMaker Studio で実行します。
+`notebooks/03_merge_and_deploy_vllm.ipynb` を SageMaker Studio で実行します。  
+Notebook 側に vLLM を入れる必要はありません。Notebook は `sagemaker` SDK でジョブとエンドポイントを作り HTTP で呼び出すだけで、vLLM は AWS の vLLM DLC のコンテナとしてエンドポイントのインスタンス上で動きます。
 
 1. セッション設定セルで、学習イメージと vLLM DLC のイメージ URI を確認する
 2. セル「1.」で学習ジョブ名を指定する（ステップ1 と同じ）
