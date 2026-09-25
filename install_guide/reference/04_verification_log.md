@@ -295,7 +295,7 @@ global batch 4 pack、3 エポック。**一発で完走**し、ローカル模�
 
 **気づき**
 
-- この日の us-west-2 は GPU の在庫が薄く、学習ジョブ・マージジョブ・エンドポイントのいずれも確保待ちや失敗が出た。エンドポイントは候補インスタンスを順に試す実装にした（`InsufficientInstanceCapacity` は 1 候補あたり 5〜10 分待ってから返る）
+- この日の us-west-2 は GPU の在庫が薄く、学習ジョブ・マージジョブ・エンドポイントのいずれも確保待ちや失敗が出た。エンドポイントは候補インスタンスを順に試す実装にした（`InsufficientInstanceCapacity` は 1 候補あたり 30 分前後待ってから返る。SDK の進捗表示のダッシュ 1 つが 30 秒）
 - transformers 5 系の `AutoProcessor.save_pretrained` は `processor_config.json` 1 つに画像・動画の設定をまとめる。vLLM 0.30.0（transformers 5.17）はこれを読める
 - vLLM の SageMaker 用 DLC は `SM_VLLM_*` 環境変数で設定し、`model_data` の tar を `/opt/ml/model` に展開して自動で `--model` に使う。Notebook 側に vLLM は不要
 

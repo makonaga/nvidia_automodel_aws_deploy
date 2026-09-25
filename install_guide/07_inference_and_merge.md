@@ -145,7 +145,7 @@ Notebook 側に vLLM を入れる必要はありません。Notebook は `sagema
 | --- | --- |
 | マージジョブ | `adapter key check: matched=228 unused=16 (mtp 以外の未使用 0)`、`mtp.* keys in output: 0`、読み直し後の生成が 3/3 で一致。課金 315 秒（確保待ち 15 分は課金外） |
 | 出力ファイル | `config.json`、`model.safetensors`（1.7 GB）、`generation_config.json`、`tokenizer.json`、`tokenizer_config.json`、`chat_template.jinja`、`processor_config.json`。transformers 5 系は画像・動画の processor 設定も `processor_config.json` にまとめて保存する（旧形式の `preprocessor_config.json` は出ない）が、vLLM DLC（transformers 5.17）で問題なく読めた |
-| エンドポイント | `ml.g5.2xlarge` と `ml.g6.2xlarge` は `InsufficientInstanceCapacity` で失敗（各 5〜10 分待ってから失敗が返る）。`ml.g5.xlarge` で InService まで 573 秒 |
+| エンドポイント | `ml.g5.2xlarge` と `ml.g6.2xlarge` は `InsufficientInstanceCapacity` で失敗（失敗が返るまで各 30 分前後。SDK の進捗表示のダッシュ 1 つが 30 秒で、約 60 個）。`ml.g5.xlarge` で InService まで 573 秒 |
 | 呼び出し | Chat Completions 形式（`chat_template_kwargs: {enable_thinking: false}`、`temperature: 0`）で 5 件とも応答。出力は HF + PEFT（ステップ1）と冒頭 100 文字前後が完全一致し、後半で分岐する。bf16 の演算順とカーネルの違いによる差で、同じ重みが載っていることの確認としては十分 |
 
 ### 完了の確認
