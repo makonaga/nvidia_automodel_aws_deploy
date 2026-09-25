@@ -229,9 +229,15 @@ MTP ヘッド自体の動作は学習イメージの中では確認しません�
 
 `Mean acceptance length` は 1 回のステップで確定するトークン数の平均（1.0 なら投機が全く当たっていない）です。0.8B に 245 件・3 エポックの学習では MTP ヘッドの精度は限られるため、受理率の絶対値より「MTP ドラフトが動いていること」の確認を目的とします。
 
-### 検証結果
+### 検証結果（2026-09-25、マージジョブまで）
 
-未実施です。
+| 項目 | 結果 |
+| --- | --- |
+| マージジョブ（`ml.g5.2xlarge`、`merged` チャネルにステップ2 の `model.tar.gz`） | `base mtp.* keys: 15 \| mtp_num_hidden_layers=1 (text_config)`。LoRA `r=16`、`lora_alpha=32`、scaling 2.0。8 モジュールすべてがベースの重みに対応付いた。`verify mtp.*: written 15 / expected 15 / equal 15`。課金 330 秒（ベースのダウンロード 17 秒） |
+| `\|delta\|/\|W\|` | `mtp.fc.weight` 0.021、`mlp.{down,gate,up}_proj` 0.007 / 0.008 / 0.010、`self_attn.{q,k,v,o}_proj` 0.007 / 0.012 / 0.005 / 0.006 |
+| 出力 | `model.safetensors` 1 ファイル（1747 MB。ステップ2 の 1706 MB に `mtp.*` 分が加わった）。`config.json` の `text_config.mtp_num_hidden_layers` はステップ2 の出力にも残っていた（`before: 1`）ため書き換えなし |
+| HF での読み直し | 473 テンソルを読み（`mtp.*` は読み飛ばし）、3 件とも生成できた。文体はステップ1・2 と同じ |
+| エンドポイント（MTP 有効） | 未実施 |
 
 ### 完了の確認
 
